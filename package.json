@@ -1,0 +1,10 @@
+{
+  "name": "auction-radar",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "preview": "node scripts/build.mjs && npx --yes serve dist"
+  },
+  "engines": { "node": ">=20" }
+}
