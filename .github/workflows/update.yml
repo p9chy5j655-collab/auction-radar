@@ -32,10 +32,19 @@ jobs:
       - name: 실거래가 캐시
         uses: actions/cache@v4
         with:
-          path: .cache
+          path: |
+            .cache/*.json
           key: cache-${{ steps.date.outputs.d }}-${{ github.run_id }}
           restore-keys: |
             cache-${{ steps.date.outputs.d }}-
+
+      - name: 사진 캐시 (한 번 받은 사진은 다시 받지 않기)
+        uses: actions/cache@v4
+        with:
+          path: .cache/thumbs
+          key: thumbs-${{ github.run_id }}
+          restore-keys: |
+            thumbs-
 
       - name: 사이트 만들기
         env:
