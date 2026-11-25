@@ -759,7 +759,8 @@ async function main() {
   }
   const rates = regionRates(results);
   for (const it of items) {
-    const rr = rates[`${it.sd}|${it.cat}`];
+    // 물건목록의 시도는 '경기도'처럼 원형이고 입찰결과는 물건명에서 뽑아 '경기'처럼 줄여 쓰므로 양쪽을 같은 기준으로 맞춰요.
+    const rr = rates[`${SD_SHORT(it.sd)}|${it.cat}`];
     if (rr) it.rr = rr;
   }
   results.sort((a, b) => (b.dt || '').localeCompare(a.dt || '') || b.price - a.price);
