@@ -417,7 +417,7 @@ async function fetchResults() {
           const cat0 = categoryOf({ ...r, onbidCltrNm: r.onbidCltrNm || r.cltrNm }, kind0);
           const reg = regionFromName(r.onbidCltrNm || r.cltrNm);
           out.push({
-            t: friendlyTitle({ ...r, onbidCltrNm: r.onbidCltrNm || r.cltrNm || '' }, cat0, num(r.landSqms), num(r.bldSqms)), sd: reg.sd, sgg: reg.sgg,
+            t: friendlyTitle({ ...r, onbidCltrNm: r.onbidCltrNm || r.cltrNm || '' }, cat0, num(r.landSqms), num(r.bldSqms)), sd: SD_SHORT(r.lctnSdnm) || reg.sd, sgg: r.lctnSggnm || reg.sgg,
             cat: cat0, appr, price,
             rate: Math.round((price / appr) * 100), bidders: pickBidders(r), dt: parseKst(r.opbdDt || r.opbdDtm || r.cltrOpbdDt || '')
           });
@@ -739,7 +739,7 @@ function itemPage(it, trades, similar, demo, updatedAt) {
   const kw = G ? keywordOf(it) : null;
   const place = G ? placeOf(it) : '';
   const region = [it.sd, it.sgg, it.emd].filter(Boolean).join(' ');
-  const title = `${it.t} 공매 · 최저 ${won(it.min)}${it.rate ? ` (감정가의 ${it.rate}%)` : ''}`;
+  const title = `${won(it.min)}부터 · ${it.t}${it.rate && it.rate < 100 ? ` (감정가의 ${it.rate}%)` : ''}`;
   const desc = `${region} ${CAT_NAME[it.cat]} 공매 물건. 감정가 ${won(it.appr)}, 최저입찰가 ${won(it.min)}, 유찰 ${it.fails}회, 입찰 마감 ${kdate(it.en)}.`;
   const canonical = SITE ? `${SITE}/item/${it.id}.html` : '';
   const rows = [
@@ -1031,6 +1031,11 @@ async function main() {
   const updatedAt = new Date().toISOString();
   await fs.rm(DIST, { recursive: true, force: true });
   await copyDir(path.join(ROOT, 'static'), DIST);
+  // 카톡 미리보기 이미지는 절대 주소여야 잘 떠요
+  if (SITE) for (const f of ['index.html', 'realestate.html', 'guide.html', 'report.html']) {
+    const fp = path.join(DIST, f);
+    try { const h = await fs.readFile(fp, 'utf8'); await fs.writeFile(fp, h.replace('content="og.png"', `content="${SITE}/og.png"`)); } catch (e) { /* 없는 파일 */ }
+  }
   await fs.mkdir(path.join(DIST, 'data'), { recursive: true });
   await fs.mkdir(path.join(DIST, 'item'), { recursive: true });
 

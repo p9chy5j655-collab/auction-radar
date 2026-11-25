@@ -48,7 +48,7 @@
 
   var PURPOSES = [
     { id: 'live', label: '내가 살 집' },
-    { id: 'invest', label: '투자·시세차익' },
+    { id: 'invest', label: '투자 목적' },
     { id: 'small', label: '소액 재테크' },
     { id: 'fun', label: '구경·이색 물건' }
   ];
@@ -70,7 +70,7 @@
     var man = Math.round(v / 10000);
     if (man >= 10000) {
       var eok = Math.floor(man / 10000), rest = man % 10000;
-      return eok + '억' + (rest ? ' ' + rest.toLocaleString('ko-KR') + '만' : '');
+      return eok.toLocaleString('ko-KR') + '억' + (rest ? ' ' + rest.toLocaleString('ko-KR') + '만' : '');
     }
     return man.toLocaleString('ko-KR') + '만';
   }
@@ -92,6 +92,8 @@
   function cheapOdd(it) { return isOdd(it) && it.min != null && it.min <= 1000000 && !it.risk && !lowball(it); }
   function isHalf(it) { return it.rate != null && it.rate <= 50 && !lowball(it); }
   function isCheap(it) { return it.mkt && it.mkt.ratio <= 85 && it.mkt.ratio >= 40 && !lowball(it); }
+  function isGd(i) { return i.cat === 'goods' || i.cat === 'car'; }
+  var RE_CATS = [['home', '아파트·주택'], ['shop', '상가·업무'], ['land', '토지']];
   function score(it) {
     var s = 0;
     if (it.cat === 'home') s += 3; else if (it.cat === 'shop' || isOdd(it)) s += 1.5;
@@ -151,6 +153,7 @@
         { id: 'top', label: '추천', head: '추천 물건', sub: '사진이 있고 눈길 끄는 물건을 먼저 보여드려요.' },
         { id: 'closing', label: '곧 마감', head: '48시간 안에 마감', sub: '입찰 마감이 가까운 순서예요.' },
         { id: 'new', label: '새로 들어온', head: '새로 들어온 물건', sub: '최근 48시간 안에 입찰이 시작됐거나 바뀐 물건이에요.' },
+        { id: 'half', label: '반값', head: '감정가 50% 이하 물건', sub: '여러 번 유찰돼 값이 많이 내려간 물건이에요. 동산·차량을 먼저 보여드려요.' },
         { id: 'cheapodd', label: '100만원 이하', head: '100만원 이하로 시작하는 물건', sub: '최저가가 100만원 이하이고 위험 신호가 없는 물건이에요.' },
         { id: 'rank', label: '온비드 인기', head: '온비드에서 관심 많은 물건', sub: '온비드에서 일주일간 관심 저장이 많았던 순위예요.' }
       ];
@@ -161,7 +164,7 @@
         { id: 'half', label: '반값', head: '감정가 50% 이하 물건', sub: '여러 번 유찰돼 값이 많이 내려간 물건이에요.' },
         { id: 'cheap', label: '시세보다 싼', head: '주변 시세보다 싼 아파트·주택', sub: '최저가가 같은 동 비슷한 면적 실거래 중간값의 85% 이하예요.' },
         { id: 'new', label: '새 물건', head: '새로 올라온 물건', sub: '최근 48시간 안에 입찰이 시작됐거나 바뀐 물건이에요.' },
-        { id: 'closing', label: '마감 임박', head: '48시간 안에 마감', sub: '서두르세요. 입찰 마감이 가까운 순서예요.' }
+        { id: 'closing', label: '마감 임박', head: '48시간 안에 마감', sub: '입찰 마감이 가까운 순서예요.' }
       ];
     }
     if (!data.items.some(function (i) { return i.rank; })) t = t.filter(function (x) { return x.id !== 'rank'; });
@@ -173,7 +176,7 @@
 
   function filtered() {
     var q = st.q.trim().toLowerCase();
-    var source = st.tab === 'liked' ? allItems : data.items;
+    var source = (st.tab === 'liked' || MODE === 'goods') ? allItems : data.items;
     var list = source.filter(function (it) {
       if (st.cat !== 'all' && grp(it) !== st.cat) return false;
       if (st.sido && shortSido(it.sd) !== st.sido) return false;
@@ -194,7 +197,7 @@
     var sort = st.sort;
     if (sort === 'auto') sort = st.tab === 'cheapodd' ? 'low' : st.tab === 'rank' ? 'rank' : st.tab === 'half' ? 'rate' : st.tab === 'closing' ? 'end' : st.tab === 'cheap' ? 'mkt' : st.tab === 'cond' ? 'fit' : 'score';
     var cmp = {
-      score: function (a, b) { return score(b) - score(a); },
+      score: function (a, b) { return (MODE === 'goods' ? (isGd(b) ? 1 : 0) - (isGd(a) ? 1 : 0) : 0) || score(b) - score(a); },
       rank: function (a, b) { return (a.rank || 99) - (b.rank || 99); },
       fit: function (a, b) { return fitScore(b, cond) - fitScore(a, cond); },
       rate: function (a, b) { return (a.rate == null ? 999 : a.rate) - (b.rate == null ? 999 : b.rate); },
@@ -206,8 +209,56 @@
     return list.sort(cmp);
   }
 
-  // 사진이 없거나 못 불러오면 종류별 색 표지가 보여요
+  // 사진이 없을 때 쓰는 2톤 일러스트 (사람 없음)
+  var ART = {
+    watch:'<svg viewBox="0 0 100 100"><rect x="38" y="6" width="24" height="22" rx="4" fill="#9C3D5E" opacity=".35"/><rect x="38" y="72" width="24" height="22" rx="4" fill="#9C3D5E" opacity=".35"/><circle cx="50" cy="50" r="27" fill="#fff" stroke="#9C3D5E" stroke-width="5"/><circle cx="50" cy="50" r="19" fill="#2B2F3A"/><path d="M50 36v14l9 6" stroke="#fff" stroke-width="3" stroke-linecap="round" fill="none"/><rect x="78" y="46" width="5" height="8" rx="2" fill="#9C3D5E"/></svg>',
+    bag:'<svg viewBox="0 0 100 100"><path d="M34 34c0-12 7-18 16-18s16 6 16 18" fill="none" stroke="#8A5A3C" stroke-width="5"/><rect x="18" y="34" width="64" height="48" rx="8" fill="#C27A4A"/><path d="M18 50h64" stroke="#8A5A3C" stroke-width="3"/><rect x="44" y="46" width="12" height="10" rx="2" fill="#E9C46A"/></svg>',
+    gold:'<svg viewBox="0 0 100 100"><path d="M20 70l10-28h40l10 28z" fill="#E0A82E"/><path d="M30 42h40l-6-14H36z" fill="#F2C94C"/><path d="M36 28h28" stroke="#FFF3C4" stroke-width="3"/><text x="50" y="64" text-anchor="middle" font-size="9" font-weight="800" fill="#7A5300" font-family="sans-serif">999.9</text></svg>',
+    car:'<svg viewBox="0 0 100 100"><path d="M12 62l6-16c2-5 6-8 12-8h36c6 0 10 3 13 8l9 16v10H12z" fill="#2F4B7C"/><path d="M28 46l5-8h28l7 8z" fill="#BFD3EE"/><circle cx="30" cy="72" r="8" fill="#15171C"/><circle cx="72" cy="72" r="8" fill="#15171C"/><circle cx="30" cy="72" r="3" fill="#C9CDD6"/><circle cx="72" cy="72" r="3" fill="#C9CDD6"/></svg>',
+    suv:'<svg viewBox="0 0 100 100"><path d="M10 64l4-18c1-5 5-8 10-8h40c5 0 9 2 12 6l12 14v12H10z" fill="#6B2E2E"/><path d="M22 46l3-6h34l9 6z" fill="#D9E4F2"/><circle cx="28" cy="72" r="9" fill="#15171C"/><circle cx="74" cy="72" r="9" fill="#15171C"/><circle cx="28" cy="72" r="3.5" fill="#C9CDD6"/><circle cx="74" cy="72" r="3.5" fill="#C9CDD6"/></svg>',
+    truck:'<svg viewBox="0 0 100 100"><rect x="8" y="36" width="30" height="32" rx="4" fill="#2F6FB0"/><rect x="13" y="41" width="18" height="11" rx="2" fill="#D9E4F2"/><rect x="40" y="50" width="52" height="18" fill="#8D96A3"/><circle cx="24" cy="72" r="7" fill="#15171C"/><circle cx="74" cy="72" r="7" fill="#15171C"/></svg>',
+    apt:'<svg viewBox="0 0 100 100"><rect x="22" y="14" width="34" height="72" fill="#3E6B4A"/><rect x="56" y="34" width="24" height="52" fill="#5E8C68"/><g fill="#E7F2E5"><rect x="28" y="22" width="8" height="6"/><rect x="42" y="22" width="8" height="6"/><rect x="28" y="34" width="8" height="6"/><rect x="42" y="34" width="8" height="6"/><rect x="28" y="46" width="8" height="6"/><rect x="42" y="46" width="8" height="6"/><rect x="28" y="58" width="8" height="6"/><rect x="42" y="58" width="8" height="6"/><rect x="62" y="42" width="12" height="6"/><rect x="62" y="54" width="12" height="6"/></g><rect x="36" y="72" width="8" height="14" fill="#E7F2E5"/></svg>',
+    house:'<svg viewBox="0 0 100 100"><path d="M14 50l36-28 36 28" fill="none" stroke="#3E6B4A" stroke-width="6" stroke-linejoin="round"/><rect x="24" y="48" width="52" height="34" fill="#5E8C68"/><rect x="44" y="60" width="12" height="22" fill="#E7F2E5"/><rect x="30" y="56" width="9" height="9" fill="#E7F2E5"/><rect x="61" y="56" width="9" height="9" fill="#E7F2E5"/></svg>',
+    land:'<svg viewBox="0 0 100 100"><path d="M6 80l26-38 16 22 12-14 34 30z" fill="#7C6A43"/><path d="M32 42l7 10-7-2-7 2z" fill="#F4EDDD"/><circle cx="74" cy="26" r="8" fill="#D9A441"/><path d="M6 86h88" stroke="#7C6A43" stroke-width="3" stroke-dasharray="4 4"/></svg>',
+    shop:'<svg viewBox="0 0 100 100"><rect x="16" y="40" width="68" height="44" fill="#5B4B8A"/><path d="M12 28h76l-6 14H18z" fill="#8A7BC0"/><path d="M12 28h76" stroke="#5B4B8A" stroke-width="2"/><rect x="24" y="52" width="24" height="32" fill="#E9E5F3"/><rect x="54" y="52" width="22" height="16" fill="#E9E5F3"/></svg>',
+    elec:'<svg viewBox="0 0 100 100"><rect x="18" y="24" width="64" height="40" rx="4" fill="#24446B"/><rect x="23" y="29" width="54" height="30" rx="2" fill="#BFD7F2"/><path d="M10 68h80l-6 8H16z" fill="#8D96A3"/><rect x="70" y="40" width="16" height="30" rx="3" fill="#15171C"/><rect x="72" y="43" width="12" height="22" rx="1" fill="#6FA8DC"/></svg>',
+    heavy:'<svg viewBox="0 0 100 100"><rect x="14" y="58" width="44" height="12" rx="6" fill="#3B3F48"/><rect x="22" y="40" width="26" height="18" rx="3" fill="#E0A82E"/><rect x="28" y="44" width="10" height="9" fill="#FFF3C4"/><path d="M48 46l20-16 14 20" fill="none" stroke="#E0A82E" stroke-width="6" stroke-linejoin="round"/><path d="M78 50l8 10-12 2z" fill="#7A5300"/><circle cx="22" cy="64" r="3" fill="#C9CDD6"/><circle cx="50" cy="64" r="3" fill="#C9CDD6"/></svg>',
+    box:'<svg viewBox="0 0 100 100"><path d="M50 14l32 14v40L50 84 18 68V28z" fill="#B38B59"/><path d="M50 14l32 14-32 14-32-14z" fill="#D9B98A"/><path d="M50 42v42" stroke="#8A6A3F" stroke-width="3"/><path d="M34 21l32 14" stroke="#F4E4C8" stroke-width="5"/></svg>',
+    doc:'<svg viewBox="0 0 100 100"><rect x="24" y="12" width="52" height="72" rx="6" fill="#fff" stroke="#5B4B8A" stroke-width="4"/><g stroke="#8A7BC0" stroke-width="4" stroke-linecap="round"><path d="M34 30h32M34 42h32M34 54h20"/></g><circle cx="62" cy="70" r="10" fill="#C0262D"/><path d="M58 70l3 3 5-6" stroke="#fff" stroke-width="2.5" fill="none" stroke-linecap="round"/></svg>',
+    living:'<svg viewBox="0 0 100 100"><rect x="16" y="46" width="68" height="22" rx="6" fill="#C2410C"/><rect x="22" y="32" width="56" height="18" rx="6" fill="#F08A4B"/><rect x="12" y="44" width="10" height="26" rx="4" fill="#9A3412"/><rect x="78" y="44" width="10" height="26" rx="4" fill="#9A3412"/><path d="M22 70v8M78 70v8" stroke="#5B2A0E" stroke-width="4"/></svg>'
+  };
+  var TINT = { watch: '#F4E3EA', bag: '#F4E3EA', gold: '#F6E9C4', car: '#DFEAF6', suv: '#DFEAF6', truck: '#DFEAF6', apt: '#E3EEE2', house: '#E3EEE2', land: '#ECE4D3', shop: '#E9E5F3', elec: '#DDE8F5', heavy: '#F6ECCF', box: '#EFE6D6', doc: '#E9E5F3', living: '#F8E3D6' };
+  function artKey(it) {
+    var t = it.t || '';
+    switch (it.sub || it.cat) {
+      case 'luxury': return /가방|백|핸드백|지갑/.test(t) ? 'bag' : 'watch';
+      case 'gold': return 'gold';
+      case 'elec': return 'elec';
+      case 'car': return /포터|봉고|트럭|화물|카고/.test(t) ? 'truck' : /SUV|카이엔|팰리세이드|쏘렌토|싼타페|X[3-7]|GV80|카니발|투싼|스포티지/.test(t) ? 'suv' : 'car';
+      case 'heavy': return 'heavy';
+      case 'machine': return 'heavy';
+      case 'living': return 'living';
+      case 'right': case 'stock': return 'doc';
+      case 'goods_etc': return 'box';
+      case 'home': return /아파트|오피스텔|도시형|빌라|다세대|연립/.test(t + (it.use || '')) ? 'apt' : 'house';
+      case 'land': return 'land';
+      case 'shop': return 'shop';
+      default: return 'shop';
+    }
+  }
+  function shortName(it) {
+    var t = String(it.t || '').replace(/\s*\((압수물|몰수품|압류물)\)$/, '').replace(/^\d{4}년식\s*/, '');
+    var w = t.split(' '), out = '';
+    for (var i = 0; i < w.length; i++) { var n = out ? out + ' ' + w[i] : w[i]; if (n.length > 10) break; out = n; }
+    return out || t.slice(0, 10);
+  }
+  // 사진이 없거나 못 불러오면 종류별 일러스트가 보여요
   function cover(it, cls) {
+    var a = artKey(it);
+    return '<div class="' + cls + ' cv art" style="background:' + TINT[a] + '">' + ART[a] +
+      (it.thumb ? '<img src="' + esc(it.thumb) + '" alt="" loading="lazy" onerror="this.remove()">' : '') + '</div>';
+  }
+  function coverOld(it, cls) {
     var k = iconKey(it);
     return '<div class="' + cls + ' cv cv-' + k + '"><svg viewBox="0 0 24 24" aria-hidden="true">' + ICON[k] + '</svg>' +
       '<span class="cv-label">' + esc(catLabel(it)) + '</span>' +
@@ -248,8 +299,8 @@
     }).join('');
 
     var cats = [['all', '전체']];
-    var present = {}; data.items.forEach(function (i) { present[grp(i)] = 1; });
-    (MODE === 'goods' ? GOODS_CATS : [['home', CAT.home], ['shop', CAT.shop], ['land', CAT.land], ['etc', '기타']])
+    var present = {}; (MODE === 'goods' ? allItems : data.items).forEach(function (i) { present[grp(i)] = 1; });
+    (MODE === 'goods' ? GOODS_CATS.concat(RE_CATS) : [['home', CAT.home], ['shop', CAT.shop], ['land', CAT.land], ['etc', '기타']])
       .forEach(function (g) { if (present[g[0]]) cats.push([g[0], g[1]]); });
     $('cats').innerHTML = cats.map(function (c) {
       return '<button class="chip" data-cat="' + c[0] + '" aria-pressed="' + (st.cat === c[0]) + '">' + esc(c[1]) + '</button>';
@@ -289,7 +340,7 @@
       var day = Math.floor(Date.now() / 864e5);
       var pool = base.filter(function (i) { return isOdd(i) && i.thumb; }).sort(function (a, b) { return score(b) - score(a); }).slice(0, 7);
       if (!pool.length) pool = base.filter(isOdd).sort(function (a, b) { return score(b) - score(a); }).slice(0, 7);
-      it = pool[day % (pool.length || 1)]; label = '오늘 들어온 신기한 물건';
+      it = pool[day % (pool.length || 1)]; label = '오늘의 한 점';
     } else {
       it = base.sort(function (a, b) { return score(b) - score(a); })[0]; label = '오늘의 픽';
     }
@@ -300,44 +351,70 @@
       '<div class="pick2-body"><div class="badges"><span class="badge">' + esc(catLabel(it)) + '</span>' + badgesOf(it) + '</div>' +
       '<div class="pick-title">' + esc(it.t) + '</div>' +
       '<div class="pick-price"><b>' + won(it.min) + '</b><span class="rate-chip">감정가의 ' + it.rate + '%</span></div>' +
-      '<div class="pick-plain">' + (it.appr ? '감정가 ' + won(it.appr) + '짜리가 ' + won(it.min) + '부터 시작해요' : '') + (MODE === 're' && isCheap(it) ? ' · 주변 시세의 ' + it.mkt.ratio + '%' : '') + '</div>' +
-      '<span class="pick-cta">' + (big ? '자세히 보기 →' : '낙찰 도우미로 따져보기 →') + '</span></div></a>';
+      '<div class="pick-plain">' + (it.appr ? '감정가 ' + won(it.appr) + '원짜리가 ' + won(it.min) + '원부터 시작해요. ' + (it.fails ? it.fails + '번 유찰돼(안 팔려서) 값이 내려왔어요.' : '처음 나온 물건이에요.') : '') + (MODE === 're' && isCheap(it) ? ' · 주변 시세의 ' + it.mkt.ratio + '%' : '') + '</div>' +
+      '<span class="pick-cta">' + (big ? '이 물건 자세히 보기 →' : '낙찰 도우미로 따져보기 →') + '</span></div></a>';
   }
-  // 첫 화면: 실제 물건 하나로 질문형 제목, 숫자 3개, 흐르는 물건 띠
+  // 첫 화면: 회전 낱말 + 진열장(실제 물건) + 사실 띠
+  var rotTimer = null;
+  function heroPool() {
+    return allItems.filter(function (i) { return i.min != null && !i.trap && !lowball(i) && !i.risk && !notStarted(i) && hoursLeft(i) > 6 && ['right', 'stock', 'goods_etc'].indexOf(i.sub) === -1 && !/차종 미상/.test(i.t); });
+  }
+  function lotHtml(it) {
+    var tag = it.rate == null ? '감정가 비공개' : it.rate >= 100 ? '감정가 그대로' : '감정가의 ' + it.rate + '%';
+    return '<a class="lot' + (isGd(it) ? '' : ' re') + '" href="' + itemUrl(it) + '" aria-label="' + esc(it.t + ', 최저 ' + won(it.min) + '원, ' + tag) + '">' +
+      '<div class="frame">' + cover(it, 'ph') + '</div><span class="tag">' + esc(tag) + '</span>' +
+      '<div class="cap"><div class="t">' + esc(it.t) + '</div><div class="p">' + esc(won(it.min)) + '<small>원부터</small></div></div></a>';
+  }
   function renderHero() {
-    if (MODE !== 'goods' || !document.getElementById('heroTitle')) return;
-    var real = data.items.filter(function (i) { return i.min != null && i.sub !== 'right' && i.sub !== 'stock' && !lowball(i); });
-    var star = real.filter(function (i) { return ['luxury', 'gold', 'car', 'elec'].indexOf(i.sub) !== -1 && i.appr && i.rate != null; })
-      .sort(function (a, b) { var da = a.rate <= 85 ? 1 : 0, db = b.rate <= 85 ? 1 : 0; return (b.thumb ? 1 : 0) - (a.thumb ? 1 : 0) || db - da || b.appr - a.appr; })[0];
-    if (star) {
-      var name = star.t.replace(/\s*\((압수물|몰수품|압류물)\)$/, '');
-      if (name.length > 16) name = name.slice(0, 15) + '…';
-      $('heroTitle').innerHTML = esc(name) + ',<br><em>' + esc(won(star.min)) + '</em>부터?';
-      $('heroSub').textContent = (star.rate < 100 ? '감정가 ' + won(star.appr) + '짜리예요. ' : '') + '나라가 압류·몰수한 명품·차·금이 온비드 공매로 나와요.';
+    if (MODE !== 'goods' || !document.getElementById('wall')) return;
+    var pool = heroPool();
+    var g = pool.filter(isGd).sort(function (a, b) { return (b.thumb ? 1 : 0) - (a.thumb ? 1 : 0) || score(b) - score(a); });
+    var r = pool.filter(function (i) { return !isGd(i); }).sort(function (a, b) { return (b.thumb ? 1 : 0) - (a.thumb ? 1 : 0) || score(b) - score(a); });
+    // 같은 종류가 이어지지 않게 섞고, 부동산은 사이사이에만
+    var bySub = {}; g.forEach(function (i) { var k = i.sub || i.cat; (bySub[k] = bySub[k] || []).push(i); });
+    var gm = [], keys = Object.keys(bySub), more = true;
+    while (more && gm.length < 12) { more = false; keys.forEach(function (k) { if (bySub[k].length && gm.length < 12) { gm.push(bySub[k].shift()); more = true; } }); }
+    var reN = Math.max(4, 12 - gm.length), rm = r.slice(0, reN);
+    var all = []; var gi = 0, ri = 0;
+    while (gi < gm.length || ri < rm.length) { if (gi < gm.length) all.push(gm[gi++]); if (gi < gm.length) all.push(gm[gi++]); if (ri < rm.length) all.push(rm[ri++]); }
+    var wide = window.matchMedia('(min-width:960px)').matches;
+    var row = function (list, cls) { var h = list.map(lotHtml).join(''); return '<div class="row ' + cls + '">' + h + h + '</div>'; };
+    if (all.length < 3) { $('wall').hidden = true; }
+    else if (wide) { var n = Math.ceil(all.length / 3); $('wall').innerHTML = row(all.slice(0, n), 'r1') + row(all.slice(n, 2 * n), 'r2') + row(all.slice(2 * n).concat(all.slice(0, 1)), 'r3'); }
+    else { var h2 = Math.ceil(all.length / 2); $('wall').innerHTML = row(all.slice(0, h2), 'r1') + row(all.slice(h2), 'r2'); }
+    // 회전 낱말: 실제 동산 이름 (없으면 부동산 종류)
+    var words = gm.slice(0, 6).map(shortName).filter(function (w) { return w.length >= 2; });
+    if (words.length < 3) words = words.concat(['반값 아파트', '임야', '상가']).slice(0, 6);
+    var rot = document.querySelector('#rot span');
+    if (rot && words.length) {
+      var wi = 0; rot.textContent = words[0];
+      if (rotTimer) clearInterval(rotTimer);
+      if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) rotTimer = setInterval(function () {
+        rot.classList.add('out');
+        setTimeout(function () { wi = (wi + 1) % words.length; rot.textContent = words[wi]; rot.classList.remove('out'); }, 350);
+      }, 2400);
     }
-    var cars = real.filter(function (i) { return i.cat === 'car'; }).length;
-    var cheapest = real.slice().sort(function (a, b) { return a.min - b.min; })[0];
-    var soon = real.filter(function (i) { return hoursLeft(i) <= 48 && hoursLeft(i) > 0; }).length;
-    var stats = [[real.length.toLocaleString('ko-KR'), '지금 구경 가능'], [cheapest ? won(cheapest.min) : '-', '가장 싼 시작가'], [cars ? cars + '대' : soon + '건', cars ? '공매 중인 차' : '48시간 내 마감']];
-    $('heroStats').innerHTML = stats.map(function (x) { return '<div><b>' + esc(x[0]) + '</b><span>' + esc(x[1]) + '</span></div>'; }).join('');
-    var tiles = real.filter(function (i) { return i.sub !== 'machine'; }).sort(function (a, b) { return (b.thumb ? 1 : 0) - (a.thumb ? 1 : 0) || score(b) - score(a); }).slice(0, 12);
-    if (tiles.length < 3) { $('marquee').hidden = true; return; }
-    var one = tiles.map(function (it) {
-      return '<a class="mq" href="' + itemUrl(it) + '" tabindex="-1">' + cover(it, 'mq-ph') + '<span class="mq-price">' + esc(won(it.min)) + '</span></a>';
-    }).join('');
-    $('marquee').innerHTML = '<div class="mq-track">' + one + one + '</div>';
+    // 사실 띠
+    var gN = allItems.filter(isGd).length, rN = allItems.length - gN;
+    var soon = allItems.filter(function (i) { return hoursLeft(i) <= 48 && hoursLeft(i) > 0; }).length;
+    $('facts').innerHTML = '<button data-go="top" data-gocat="all"><b>' + gN.toLocaleString('ko-KR') + '점</b><span>명품·차·금 등 동산</span></button>' +
+      '<a href="realestate.html"><b>' + rN.toLocaleString('ko-KR') + '건</b><span>집·땅·상가</span></a>' +
+      '<button data-go="closing" data-gocat="all"><b>' + soon.toLocaleString('ko-KR') + '건</b><span>48시간 안에 마감</span></button>';
+    // 검색 예시는 실제 있는 이름으로
+    if (words.length >= 2) $('q').placeholder = words.slice(0, 3).join(', ') + '…';
   }
 
   function renderCircles() {
     var el = document.getElementById('circles'); if (!el) return;
-    var cnt = {}; data.items.forEach(function (i) { var g = grp(i); cnt[g] = (cnt[g] || 0) + 1; });
-    el.innerHTML = GOODS_CATS.filter(function (g) { return cnt[g[0]]; }).map(function (g) {
-      var k = g[0] === 'oR' ? 'goods_etc' : g[0];
-      return '<button class="circle ck-' + k + '" data-circle="' + g[0] + '"><span class="circle-ic"><svg viewBox="0 0 24 24" aria-hidden="true">' + ICON[k] + '</svg></span><b>' + esc(g[1]) + '</b><small>' + cnt[g[0]].toLocaleString('ko-KR') + '</small></button>';
+    var cnt = {}; allItems.forEach(function (i) { var g = grp(i); cnt[g] = (cnt[g] || 0) + 1; });
+    var AK = { luxury: 'watch', gold: 'gold', elec: 'elec', car: 'car', living: 'living', heavy: 'heavy', oR: 'doc', home: 'apt', shop: 'shop', land: 'land' };
+    el.innerHTML = GOODS_CATS.concat(RE_CATS).filter(function (g) { return cnt[g[0]]; }).map(function (g) {
+      var a = AK[g[0]] || 'box';
+      return '<button class="cat2" data-circle="' + g[0] + '"><i style="background:' + TINT[a] + '">' + ART[a] + '</i>' + esc(g[1]) + ' <em>' + cnt[g[0]].toLocaleString('ko-KR') + '</em></button>';
     }).join('');
   }
   function shelfHtml(sh) {
-    return '<section class="shelf"><div class="section-head"><h2>' + esc(sh.title) + '</h2><button class="link-btn" data-go="' + sh.go + '"' + (sh.cat ? ' data-gocat="' + sh.cat + '"' : '') + '>' + esc(sh.sub) + ' · 전체</button></div>' +
+    return '<section class="shelf' + (sh.re ? ' shelf-re' : '') + '"><div class="section-head"><h2>' + (sh.re ? '<span class="re-tag">부동산</span>' : '') + esc(sh.title) + '</h2><button class="link-btn" data-go="' + sh.go + '"' + (sh.cat ? ' data-gocat="' + sh.cat + '"' : '') + '>' + esc(sh.sub) + ' · 전체</button></div>' +
       '<div class="scroller">' + sh.list.map(function (i) { return miniHtml(i, sh.top(i)); }).join('') + '</div></section>';
   }
   function renderShelves(closing) {
@@ -346,18 +423,32 @@
     var lab = function (i) { return '<span class="badge">' + esc(catLabel(i)) + '</span>'; };
     var cl = closing.filter(function (i) { return !i.risk; }).sort(function (a, b) { return score(b) - score(a); }).slice(0, 12);
     if (MODE === 'goods') {
-      if (cl.length) shelves.push({ title: '곧 마감돼요', sub: '48시간 이내', go: 'closing', list: cl, top: dd });
+      if (cl.length) shelves.push({ title: '오늘·내일 마감', sub: '48시간 이내', go: 'closing', list: cl, top: dd });
       var small = items.filter(cheapOdd).sort(function (a, b) { return a.min - b.min; }).slice(0, 12);
-      if (small.length) shelves.push({ title: '100만원 이하로 시작해요', sub: '커피값부터 도전', go: 'cheapodd', list: small, top: lab });
+      if (small.length) shelves.push({ title: '100만 원 이하로 시작해요', sub: '소액 물건', go: 'cheapodd', list: small, top: lab });
       [['luxury', '명품·시계 모음'], ['car', '자동차 모음'], ['elec', '전자기기 모음'], ['gold', '금·귀금속 모음']].forEach(function (c) {
         var l = items.filter(function (i) { return i.sub === c[0] && !i.risk; }).sort(function (a, b) { return score(b) - score(a); }).slice(0, 12);
         if (l.length >= 2) shelves.push({ title: c[1], sub: l.length + '건 이상', go: 'top', cat: c[0], list: l, top: function (i) { return badgesOf(i); } });
       });
       var ranked = items.filter(function (i) { return i.rank && !i.trap && !lowball(i); }).sort(function (a, b) { return a.rank - b.rank; }).slice(0, 10);
-      if (ranked.length) shelves.push({ title: '온비드에서 지금 뜨는 물건', sub: '관심 저장 순위', go: 'rank', list: ranked, top: function (i) { return '<span class="badge badge-hot">' + i.rank + '위</span>'; } });
+      if (ranked.length) shelves.push({ title: '온비드에서 관심 많은 물건', sub: '이번 주 관심 저장 순', go: 'rank', list: ranked, top: function (i) { return '<span class="badge badge-hot">' + i.rank + '위</span>'; } });
+      // 동산이 적어도 첫 화면이 비지 않게 부동산 줄을 사이사이 넣어요 (위험 신호 있는 물건 제외)
+      var reS = [], reAll = allItems.filter(function (i) { return !isGd(i) && !i.trap && !lowball(i) && i.min != null; });
+      var half = reAll.filter(isHalf).sort(function (a, b) { return a.rate - b.rate; }).slice(0, 10);
+      if (half.length) reS.push({ title: '반값까지 내려온 부동산', sub: '감정가 50% 이하', go: 'half', cat: 'all', list: half, top: lab });
+      var under1 = reAll.filter(function (i) { return i.cat === 'home' && i.min <= 1e8; }).sort(function (a, b) { return score(b) - score(a); }).slice(0, 10);
+      if (under1.length) reS.push({ title: '1억 이하로 시작하는 집', sub: '아파트·주택', go: 'top', cat: 'home', list: under1, top: lab });
+      var metro = reAll.filter(function (i) { return /서울|경기|인천/.test(i.sd) && (i.cat === 'home' || i.cat === 'shop') && i.rate != null && i.rate <= 80; }).sort(function (a, b) { return a.rate - b.rate; }).slice(0, 10);
+      if (metro.length) reS.push({ title: '수도권 집·상가, 감정가 80% 이하', sub: '서울·경기·인천', go: 'top', cat: 'home', list: metro, top: function (i) { return '<span class="badge">' + esc(shortSido(i.sd)) + '</span>'; } });
+      var mk = reAll.filter(isCheap).sort(function (a, b) { return a.mkt.ratio - b.mkt.ratio; }).slice(0, 10);
+      if (mk.length) reS.push({ title: '같은 단지 실거래가보다 낮게 시작하는 아파트', sub: '실거래가 비교', go: 'top', cat: 'home', list: mk, top: function (i) { return '<span class="badge badge-blue">시세의 ' + i.mkt.ratio + '%</span>'; } });
+      reS.forEach(function (x) { x.re = true; });
+      var mixed = [], gi = 0, ri = 0;
+      while (gi < shelves.length || ri < reS.length) { if (gi < shelves.length) mixed.push(shelves[gi++]); if (ri < reS.length) mixed.push(reS[ri++]); }
+      shelves = mixed;
     } else {
       var ranked2 = items.filter(function (i) { return i.rank && !i.trap && !lowball(i); }).sort(function (a, b) { return a.rank - b.rank; }).slice(0, 10);
-      if (ranked2.length) shelves.push({ title: '온비드에서 지금 뜨는 물건', sub: '관심 저장 순위', go: 'rank', list: ranked2, top: function (i) { return '<span class="badge badge-hot">' + i.rank + '위</span>'; } });
+      if (ranked2.length) shelves.push({ title: '온비드에서 관심 많은 물건', sub: '이번 주 관심 저장 순', go: 'rank', list: ranked2, top: function (i) { return '<span class="badge badge-hot">' + i.rank + '위</span>'; } });
       if (cl.length) shelves.push({ title: '곧 마감돼요', sub: '48시간 이내', go: 'closing', list: cl, top: dd });
       var half = items.filter(isHalf).sort(function (a, b) { return a.rate - b.rate; }).slice(0, 10);
       if (half.length) shelves.push({ title: '반값 부동산', sub: '감정가 50% 이하', go: 'half', list: half, top: lab });
@@ -437,7 +528,7 @@
     var sparse = data.items.length < 30;
     var list = re.slice(0, sparse ? 5 : 3);
     if (!list.length) { el.hidden = true; return; }
-    el.innerHTML = '<div class="section-head"><h2>많이 싸게 나온 부동산</h2><a class="link-btn" href="realestate.html?tab=half">반값 부동산 전체</a></div>' +
+    el.innerHTML = '<div class="section-head"><h2>감정가보다 많이 내려온 부동산</h2><a class="link-btn" href="realestate.html?tab=half">반값 부동산 전체</a></div>' +
       '<p class="section-sub">감정가의 60% 이하로 내려온 집·땅·상가 중 위험 신호가 없는 물건만 골랐어요.</p>' +
       list.map(function (it) {
         return '<a class="deal" href="' + itemUrl(it) + '">' + cover(it, 'deal-ph') +
@@ -446,7 +537,7 @@
           '<div class="deal-price"><b>' + won(it.min) + '</b><span class="rate-chip">감정가의 ' + it.rate + '%</span></div>' +
           '<p class="deal-why">' + esc(dealWhy(it)) + '</p>' +
           (it.mkt ? '<p class="deal-mkt">같은 단지 최근 실거래 중간값 ' + won(it.mkt.med) + ' → 그 값의 ' + it.mkt.ratio + '%예요.</p>' : '') +
-          '<span class="deal-cta">왜 싼지 더 따져 보기 →</span></div></a>';
+          '<span class="deal-cta">왜 내려왔는지 보기 →</span></div></a>';
       }).join('') +
       '<p class="note pad-x">싸게 나온 데는 이유가 있을 수 있어요. 입찰 전 공고문과 등기부를 꼭 확인하세요.</p>';
     el.hidden = false;
@@ -466,7 +557,7 @@
     var newN = real.filter(function (i) { return i.isNew; }).length;
     cards.push(['새로 들어온 물건', newN + '점', '최근 48시간', null, 'new']);
     var smallN = real.filter(cheapOdd).length;
-    if (smallN) cards.push(['100만원 이하', smallN + '점', '커피값부터 도전', null, 'cheapodd']);
+    if (smallN) cards.push(['100만 원 이하', smallN + '점', '소액으로 구경해요', null, 'cheapodd']);
     el.innerHTML = '<section class="numbers"><div class="scroller">' + cards.map(function (c) {
       var inner = '<span class="num-label">' + esc(c[0]) + '</span><b>' + esc(c[1]) + '</b><span class="num-sub">' + esc(c[2]) + '</span>';
       return c[3] ? '<a class="num" href="' + itemUrl(c[3]) + '">' + inner + '</a>' : '<button class="num" ' + (c[4] ? 'data-go="' + c[4] + '"' : 'disabled') + '>' + inner + '</button>';
@@ -478,7 +569,7 @@
     $('resultsWrap').hidden = !rs.length;
     $('results').innerHTML = rs.slice(0, MODE === 'goods' ? 3 : 5).map(function (r) {
       var over = r.rate > 100;
-      return '<div class="result-card"><div class="row-between"><b class="rc-title">' + esc(r.t) + '</b><span class="rc-tag ' + (over ? 'over' : r.rate < 70 ? 'low' : r.bidders >= 3 ? '' : 'low') + '">' + (over ? '감정가보다 비싸게' : r.rate < 70 ? '싸게 낙찰' : r.bidders >= 3 ? '치열했어요' : '감정가 근처') + '</span></div>' +
+      return '<div class="result-card"><div class="row-between"><b class="rc-title">' + esc(r.t) + '</b><span class="rc-tag ' + (over ? 'over' : r.rate < 70 ? 'low' : r.bidders >= 3 ? '' : 'low') + '">' + (over ? '감정가보다 높게' : r.bidders >= 3 ? r.bidders + '명 경쟁' : r.rate < 90 ? '감정가보다 낮게' : '감정가 근처') + '</span></div>' +
         '<div class="rc-line">감정 ' + won(r.appr) + ' → <strong>' + won(r.price) + '</strong><span class="rc-rate">' + r.rate + '%</span></div>' +
         '<div class="bar"><i style="width:' + Math.min(100, r.rate) + '%' + (over ? ';background:var(--red)' : '') + '"></i></div>' +
         '<div class="card-meta">' + esc([shortSido(r.sd), r.sgg].filter(Boolean).join(' ')) + (r.bidders ? ' · ' + r.bidders + '명 경쟁' : '') + '</div></div>';
@@ -509,7 +600,7 @@
     $('hot').innerHTML = hot.map(function (w) { return '<button data-hot="' + esc(w) + '">#' + esc(w) + '</button>'; }).join('');
 
     var d = data.updatedAt ? new Date(data.updatedAt) : null;
-    $('updated').textContent = (MODE === 'goods' ? '실시간 공매 · 매시간 업데이트' : '온비드 부동산 공매 ' + items.length.toLocaleString('ko-KR') + '건 · 매시간 업데이트') +
+    $('updated').textContent = (MODE === 'goods' ? '지금 공매 중 ' + allItems.length.toLocaleString('ko-KR') + '건' : '온비드 부동산 공매 ' + items.length.toLocaleString('ko-KR') + '건 · 매시간 업데이트') +
       (d ? ' · ' + d.toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) + ' 기준' : '');
     $('demo').hidden = !data.demo;
     var ageH = d ? (Date.now() - d.getTime()) / 3600e3 : 0;
@@ -557,6 +648,8 @@
   var condEditing = false, noticeShown = false;
 
   // ---------- 이벤트 ----------
+  var fb = document.getElementById('findBtn');
+  if (fb) fb.addEventListener('click', function () { st.q = $('q').value; st.tab = 'top'; st.cat = 'all'; st.shown = PAGE; render(); $('tabs').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
   function go(tab) { st.tab = tab; st.shown = PAGE; render(); $('tabs').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
   document.addEventListener('click', function (e) {
     var b = e.target.closest('button,[data-go]');
@@ -640,6 +733,7 @@
   // ---------- 시작 ----------
   var params = new URLSearchParams(location.search);
   if (params.get('tab')) st.tab = params.get('tab');
+  if (params.get('cat')) st.cat = params.get('cat');
   else if (cond) st.tab = 'cond';
   fetch('data/items.json', { cache: 'no-cache' }).then(function (r) { return r.json(); }).then(function (d) {
     d.items = d.items.filter(function (i) { return !(i.en && new Date(i.en).getTime() < Date.now()); });
