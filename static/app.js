@@ -50,22 +50,30 @@
     return man.toLocaleString('ko-KR') + '만';
   }
   function hoursLeft(it) { return it.en ? (new Date(it.en).getTime() - Date.now()) / 3600e3 : Infinity; }
+  function notStarted(it) { return it.st && new Date(it.st).getTime() > Date.now(); }
   function ddayLabel(it) {
+    if (notStarted(it)) {
+      var d = new Date(it.st);
+      return '입찰 예정 ' + (d.getMonth() + 1) + '.' + d.getDate();
+    }
     var h = hoursLeft(it);
     if (!isFinite(h)) return '';
     if (h < 0) return '마감';
     if (h < 24) return '오늘 마감 ' + Math.max(1, Math.floor(h)) + '시간 남음';
     return '마감 D-' + Math.ceil(h / 24);
   }
-  function isHalf(it) { return it.rate != null && it.rate <= 50; }
-  function isCheap(it) { return it.mkt && it.mkt.ratio <= 85; }
+  // 감정가 30% 미만은 숨은 조건(인수 보증금·지분 등)이 많아 추천에서 빼요
+  function lowball(it) { return it.rate != null && it.rate < 30; }
+  function isHalf(it) { return it.rate != null && it.rate <= 50 && !lowball(it); }
+  function isCheap(it) { return it.mkt && it.mkt.ratio <= 85 && it.mkt.ratio >= 40 && !lowball(it); }
   function score(it) {
     var s = 0;
     if (it.cat === 'home') s += 3; else if (it.cat === 'shop' || it.cat === 'goods' || it.cat === 'car') s += 1.5;
     if (/서울|경기/.test(it.sd)) s += 2;
-    if (it.rate != null) s += Math.max(0, (100 - it.rate) / 12);
-    if (it.mkt) s += Math.max(0, (100 - it.mkt.ratio) / 6);
+    if (it.rate != null && !lowball(it)) s += Math.max(0, (100 - it.rate) / 12);
+    if (isCheap(it)) s += Math.max(0, (100 - it.mkt.ratio) / 6);
     if (hoursLeft(it) < 72) s += 1;
+    if (notStarted(it)) s -= 1;
     if (it.isNew) s += 1;
     if (it.rank) s += Math.max(0, 4 - it.rank / 5);
     s -= (it.risk || 0) * 1.5;
@@ -160,7 +168,7 @@
   }
 
   function thumbHtml(it) {
-    if (it.thumb) return '<div class="thumb"><img src="' + esc(it.thumb) + '" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()"></div>';
+    if (it.thumb) return '<div class="thumb ' + it.cat + '"><img src="' + esc(it.thumb) + '" alt="" loading="lazy" onerror="this.outerHTML=\'<svg viewBox=&quot;0 0 24 24&quot; aria-hidden=&quot;true&quot;>' + ICON[it.cat].replace(/"/g, '&quot;') + '</svg>\'"></div>';
     return '<div class="thumb ' + it.cat + '"><svg viewBox="0 0 24 24" aria-hidden="true">' + ICON[it.cat] + '</svg></div>';
   }
 
@@ -180,7 +188,7 @@
       '<div class="card-meta">' + esc([shortSido(it.sd), it.sgg, it.emd].filter(Boolean).join(' ')) + ' · 유찰 ' + it.fails + '회</div>' +
       '<div class="price-line"><b>' + won(it.min) + '</b><s>감정 ' + won(it.appr) + '</s></div></div>' +
       '<div class="rate-col">' + (it.rate != null ? '<span class="rate ' + (isHalf(it) ? 'hot' : '') + '">' + it.rate + '%</span>' : '') +
-      (it.mkt ? '<span class="mkt">시세의 ' + it.mkt.ratio + '%</span>' : '') + '</div></a>' +
+      (it.mkt && !lowball(it) ? '<span class="mkt">시세의 ' + it.mkt.ratio + '%</span>' : '') + '</div></a>' +
       '<div class="card-actions"><button data-like="' + esc(it.id) + '" aria-pressed="' + isLiked + '">' + HEART + (isLiked ? '관심 등록됨' : '관심 등록') + '</button>' +
       '<button data-share="' + esc(it.id) + '">' + SHARE + '친구에게 공유</button></div></article>';
   }
@@ -224,12 +232,12 @@
   function miniHtml(it, top) {
     return '<a class="mini" href="' + itemUrl(it) + '"><span class="mini-top">' + top +
       (it.rate != null ? '<span class="mini-rate">' + it.rate + '%</span>' : '') + '</span>' +
-      (it.thumb ? '<span class="mini-img"><img src="' + esc(it.thumb) + '" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentNode.remove()"></span>' : '') +
+      (it.thumb ? '<span class="mini-img"><img src="' + esc(it.thumb) + '" alt="" loading="lazy" onerror="this.parentNode.remove()"></span>' : '') +
       '<span class="mini-title">' + esc(it.t) + '</span><span class="mini-region">' + esc([shortSido(it.sd), it.sgg].filter(Boolean).join(' ')) + '</span>' +
       '<span class="mini-price">' + won(it.min) + '</span></a>';
   }
   function renderPick() {
-    var pool = data.items.filter(function (i) { return i.min != null && i.rate != null && !i.risk && hoursLeft(i) > 6 && i.cat !== 'goods' && i.cat !== 'car'; });
+    var pool = data.items.filter(function (i) { return i.min != null && i.rate != null && !i.risk && !notStarted(i) && hoursLeft(i) > 6 && i.cat !== 'goods' && i.cat !== 'car'; });
     var it = pool.sort(function (a, b) { return score(b) - score(a); })[0];
     if (!it) { $('pick').hidden = true; return; }
     $('pick').innerHTML = '<div class="pick-label">오늘의 픽</div>' +
@@ -238,7 +246,7 @@
       '<div class="pick-body"><div class="badges"><span class="badge">' + esc(CAT[it.cat]) + '</span>' + (it.rank ? '<span class="badge badge-hot">온비드 관심 ' + it.rank + '위</span>' : '') + '<span class="dday">' + esc(ddayLabel(it)) + '</span></div>' +
       '<div class="pick-title">' + esc(it.t) + '</div>' +
       '<div class="pick-price"><b>' + won(it.min) + '</b><s>감정 ' + won(it.appr) + '</s></div>' +
-      '<div class="pick-plain">' + esc(plain(it)) + (it.mkt ? ' · 주변 시세의 ' + it.mkt.ratio + '%' : '') + '</div>' +
+      '<div class="pick-plain">' + esc(plain(it)) + (isCheap(it) ? ' · 주변 시세의 ' + it.mkt.ratio + '%' : '') + '</div>' +
       '<span class="pick-cta">낙찰 도우미로 따져보기 →</span></div></a>';
   }
   function renderShelves(closing) {

@@ -23,7 +23,7 @@
 
 - 마이페이지 → 인증키에서 **일반 인증키(Decoding)** 를 복사해 두세요. Encoding 키를 넣어도 동작해요.
 - ⚠️ 각 API 상세 페이지의 **이용허락범위**를 꼭 확인하세요. 광고를 붙여 수익을 내려면 상업적 이용이 허용돼야 해요. 애매하면 제공기관(한국자산관리공사 디지털시스템실)에 문의하세요.
-- 부동산 물건목록과 실거래가 외의 API는 상세 페이지의 **요청주소**(예: `https://apis.data.go.kr/B010003/서비스명/기능명`)를 복사해 두세요. 아래 3단계에서 변수로 넣어요.
+- 동산·차량·관심순위·입찰결과 API 주소는 코드에 이미 들어 있어요. 활용신청만 하면 자동으로 켜져요(신청 안 한 API는 건너뛰어요).
 - (선택) [네이버 개발자센터](https://developers.naver.com)에서 ‘검색’ API 애플리케이션을 만들면 이색 물건에 ‘새 제품 가격’ 비교가 붙어요. 상업적 이용 조건은 네이버 API 이용약관을 확인하세요.
 
 ## 2. Cloudflare 준비 (10분)
@@ -88,6 +88,7 @@ npx serve dist                         # http://localhost:3000
 
 ```
 scripts/build.mjs    데이터 수집·정리·페이지 생성
+functions/img.js     온비드 사진을 대신 불러오는 통로 (Cloudflare Pages Function)
 scripts/sample.mjs   예시 데이터
 static/              화면 (index, 상세 스크립트, 가이드, 약관, PWA 파일)
 .github/workflows/   매시간 자동 실행

@@ -22,9 +22,16 @@
   // 마감 카운트다운
   function tick() {
     if (!it.en) return;
-    var ms = new Date(it.en).getTime() - Date.now();
     var el = $('countdown');
     var dd = document.querySelector('[data-dday]');
+    var toStart = it.st ? new Date(it.st).getTime() - Date.now() : 0;
+    if (toStart > 0) {
+      var sd = Math.floor(toStart / 864e5), sh = Math.floor(toStart % 864e5 / 36e5);
+      el.textContent = '입찰 시작까지 ' + (sd ? sd + '일 ' : '') + sh + '시간';
+      if (dd) { dd.textContent = '입찰 예정'; dd.className = 'badge badge-blue'; }
+      return;
+    }
+    var ms = new Date(it.en).getTime() - Date.now();
     if (ms <= 0) { el.textContent = '마감됐어요'; if (dd) dd.textContent = '마감'; return; }
     var d = Math.floor(ms / 864e5), h = Math.floor(ms % 864e5 / 36e5), m = Math.floor(ms % 36e5 / 6e4);
     el.textContent = (d ? d + '일 ' : '') + h + '시간 ' + m + '분';

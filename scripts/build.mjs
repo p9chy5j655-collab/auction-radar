@@ -12,10 +12,13 @@ const CACHE = path.join(ROOT, '.cache');
 
 const KEY = (process.env.DATA_GO_KR_KEY || '').trim();
 const SITE = (process.env.SITE_URL || '').replace(/\/$/, '');
-const GOODS_URL = (process.env.ONBID_GOODS_URL || '').trim(); // 온비드 동산 물건목록 조회서비스 요청주소
-const CAR_URL = (process.env.ONBID_CAR_URL || '').trim();     // 온비드 차량 물건목록 조회서비스 요청주소
-const RANK_URL = (process.env.ONBID_RANK_URL || '').trim();   // 온비드 순위물건목록 관심물건순위 조회서비스 요청주소
-const RESULT_URL = (process.env.ONBID_RESULT_URL || '').trim(); // 온비드 물건 입찰결과목록 조회서비스 요청주소
+// 공공데이터포털 '활용명세'에서 확인한 요청주소예요. 바뀌면 GitHub Variables로 덮어쓸 수 있어요.
+// 해당 API를 활용신청하지 않았으면 그 부분만 건너뛰고 나머지는 정상으로 만들어져요.
+const B = 'https://apis.data.go.kr/B010003';
+const GOODS_URL = (process.env.ONBID_GOODS_URL || `${B}/OnbidMvastListSrvc2/getMvastCltrList2`).trim(); // 동산 물건목록
+const CAR_URL = (process.env.ONBID_CAR_URL || `${B}/OnbidCarListSrvc2/getCarCltrList2`).trim();         // 차량 물건목록
+const RANK_URL = (process.env.ONBID_RANK_URL || `${B}/OnbidItrsCltrRnkClgSrvc/getItrsCltrRnkClg`).trim();      // 관심물건순위
+const RESULT_URL = (process.env.ONBID_RESULT_URL || `${B}/OnbidCltrBidRsltListSrvc2/getCltrBidRsltList2`).trim(); // 입찰결과목록
 const NAVER_ID = (process.env.NAVER_CLIENT_ID || '').trim();     // (선택) 네이버 검색 API - 새 제품 최저가
 const NAVER_SECRET = (process.env.NAVER_CLIENT_SECRET || '').trim();
 const RESULT_TYPES = (process.env.ONBID_RESULT_CLTR_TYPES || '0001').split(',').map((s) => s.trim()).filter(Boolean);
@@ -121,6 +124,26 @@ function categoryOf(r, kind) {
   return 'etc';
 }
 
+const SD_SHORT = (sd) => String(sd || '').replace(/특별자치시|특별자치도|특별시|광역시/g, '')
+  .replace(/^충청북도$/, '충북').replace(/^충청남도$/, '충남').replace(/^전라북도$|^전북$/, '전북').replace(/^전라남도$/, '전남')
+  .replace(/^경상북도$/, '경북').replace(/^경상남도$/, '경남').replace(/도$/, '');
+// 주소만 있는 물건명을 '부산 서구 아미동2가 대지 281㎡'처럼 읽기 쉬운 이름으로
+function friendlyTitle(r, cat, land, bld) {
+  const orig = (r.onbidCltrNm || '').replace(/\s+/g, ' ').trim();
+  if (cat === 'goods' || cat === 'car') return orig;
+  const region = [SD_SHORT(r.lctnSdnm), r.lctnSggnm, r.lctnEmdNm].filter(Boolean).join(' ');
+  const KIND = { 전: '밭', 답: '논', 대: '대지', 과: '과수원', 목: '목장용지', 잡: '잡종지' };
+  const kind0 = r.cltrUsgSclsCtgrNm || r.cltrUsgMclsCtgrNm || '';
+  const kind = KIND[kind0] || kind0;
+  const area = bld ? bld : land;
+  // 원래 이름에 단지명·건물명 같은 고유 이름이 있으면 살려요
+  const rest = orig.replace(String(r.lctnSdnm || ''), '').replace(String(r.lctnSggnm || ''), '').replace(String(r.lctnEmdNm || ''), '')
+    .replace(/제?\s*[\d\-]+\s*(동|층|호|번지|필지)/g, ' ').replace(/[\d\-,~()]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const named = /[가-힣A-Za-z]{2,}/.test(rest) && !/^(대|전|답|임야|도로|잡종지|구거)$/.test(rest) ? rest.split(' ').filter((w) => /[가-힣A-Za-z]{2,}/.test(w) && !/^[가-힣]{1,3}(리|읍|면|동)$/.test(w) && !/^(외|지상|지하|토지|건물)$/.test(w)).slice(0, 2).join(' ') : '';
+  const parts = [region, named || kind, area ? `${Math.round(area * 10) / 10}㎡` : ''].filter(Boolean);
+  return parts.length >= 2 ? parts.join(' ') : orig;
+}
+
 function normalize(r, kind) {
   const appr = num(r.apslEvlAmt);
   const min = num(r.lowstBidPrcIndctCont);
@@ -128,9 +151,12 @@ function normalize(r, kind) {
   const q = new URLSearchParams({
     onbidCltrno: r.onbidCltrno ?? '', onbidPbancNo: r.onbidPbancNo ?? '', pbctNo: r.pbctNo ?? '', pbctCdtnNo: r.pbctCdtnNo ?? ''
   });
+  const cat0 = categoryOf(r, kind);
+  const land0 = num(r.landSqms), bld0 = num(r.bldSqms);
   return {
     id, key: String(r.cltrMngNo || ''),
-    t: (r.onbidCltrNm || '').trim() || '이름 없는 물건',
+    t: friendlyTitle(r, cat0, land0, bld0) || '이름 없는 물건',
+    addr: (r.onbidCltrNm || '').trim(),
     sd: r.lctnSdnm || '', sgg: r.lctnSggnm || '', emd: r.lctnEmdNm || '',
     cat: categoryOf(r, kind),
     use: [r.cltrUsgMclsCtgrNm, r.cltrUsgSclsCtgrNm].filter(Boolean).join(' · '),
@@ -139,7 +165,8 @@ function normalize(r, kind) {
     fails: num(r.usbdNft) || 0,
     st: parseKst(r.cltrBidBgngDt), en: parseKst(r.cltrBidEndDt),
     stat: r.pbctStatNm || '',
-    thumb: /^https?:\/\//.test(r.thnlImgUrlAdr || '') ? r.thnlImgUrlAdr : '',
+    // 온비드 사진은 직접 띄우면 막혀서, 사이트의 /img 통로(functions/img.js)를 거쳐 보여줘요
+    thumb: /^https?:\/\//.test(r.thnlImgUrlAdr || '') ? `/img?u=${encodeURIComponent(r.thnlImgUrlAdr)}` : '',
     land: num(r.landSqms), bld: num(r.bldSqms),
     prop: r.prptDivNm || '', org: r.orgNm || '', req: r.rqstOrgNm || '',
     evc: r.evcRsbyTrgtCont || '', how: [r.cptnMthodNm, r.bidMthodNm].filter(Boolean).join(' · '),
@@ -158,6 +185,7 @@ async function fetchList(base, kind) {
       const { items, total } = await callApi(base, {
         pageNo: page, numOfRows: 5000, resultType: 'json', prptDivCd: PROP_CODES, pvctTrgtYn: pv, dspsMthodCd: '0001'
       });
+      if (page === 1 && pv === 'N' && items[0] && kind !== 're') log(`${kind} 필드: ${Object.keys(items[0]).join(',')}`);
       out.push(...items.map((r) => normalize(r, kind)));
       log(kind, `수의계약=${pv}`, `페이지 ${page}`, `${items.length}건 / 전체 ${total}`);
       if (!items.length || page * 5000 >= total) break;
@@ -388,7 +416,7 @@ function plainSummary(it) {
 function reportPage(items, results, demo, updatedAt) {
   const d = new Date(Date.now() + 9 * 3600e3);
   const week = `${d.getUTCMonth() + 1}월 ${Math.ceil(d.getUTCDate() / 7)}주차`;
-  const clean = items.filter((it) => it.min && it.rate && !risksOf(it).some(([h]) => /공유지분|비공개|주의 단어/.test(h)));
+  const clean = items.filter((it) => it.min && it.rate && !risksOf(it).some(([h]) => /공유지분|비공개|주의 단어|비정상/.test(h)));
   const half = clean.filter((it) => ['home', 'shop', 'land'].includes(it.cat)).sort((a, b) => a.rate - b.rate).slice(0, 5);
   const cheap = clean.filter((it) => it.mkt).sort((a, b) => a.mkt.ratio - b.mkt.ratio).slice(0, 3);
   const odd = clean.filter((it) => it.cat === 'goods' || it.cat === 'car').sort((a, b) => a.rate - b.rate).slice(0, 3);
@@ -410,6 +438,8 @@ function reportPage(items, results, demo, updatedAt) {
 <title>${esc(week)} 반값 공매 리포트 | 경매레이더</title>
 <meta name="description" content="${esc(`${week} 온비드 공매 중 감정가 대비 가장 싼 부동산 TOP 5, 시세보다 싼 아파트, 이색 공매 물건을 정리했어요.`)}">
 ${SITE ? `<link rel="canonical" href="${esc(SITE)}/report.html">` : ''}
+<meta property="og:title" content="${esc(week)} 반값 공매 리포트">
+<meta property="og:image" content="${SITE ? esc(SITE) + '/og.png' : 'og.png'}">
 <meta name="theme-color" content="#16181D">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="style.css">
@@ -422,7 +452,7 @@ ${SITE ? `<link rel="canonical" href="${esc(SITE)}/report.html">` : ''}
 <span style="width:44px"></span>
 </div>
 ${demo ? '<div class="demo-bar">예시 데이터로 만든 리포트예요.</div>' : ''}
-<header class="report-hero"><span>${esc(week)} · ${esc(kdate(updatedAt))} 기준</span><h1>이번 주<br>반값 공매 리포트</h1><p>온비드에 올라온 공매 물건 ${items.length.toLocaleString('ko-KR')}건 중 감정가 대비 싼 물건을 자동으로 골랐어요. 공유지분·최저가 비공개 물건은 뺐어요.</p></header>
+<header class="report-hero"><span>${esc(week)} · ${esc(kdate(updatedAt))} 기준</span><h1>이번 주<br>반값 공매 리포트</h1><p>온비드에 올라온 공매 물건 ${items.length.toLocaleString('ko-KR')}건 중 감정가 대비 싼 물건을 자동으로 골랐어요. 공유지분·최저가 비공개·감정가 30% 미만 물건은 뺐어요.</p></header>
 ${block('감정가 대비 가장 싼 부동산 TOP 5', half, (it) => `감정가의 ${it.rate}%`)}
 ${block('주변 시세보다 싼 아파트·주택', cheap, (it) => `시세의 ${it.mkt.ratio}%`)}
 ${block('이게 이 가격? 이색 공매', odd, (it) => `감정가의 ${it.rate}%`)}
@@ -456,6 +486,7 @@ export function risksOf(it) {
   if (/매수인|낙찰자|매수자/.test(it.evc || '') && ['home', 'shop', 'etc'].includes(it.cat)) r.push(['명도 책임이 낙찰자에게 있어요', '공매 물건은 대부분 그래요. 살고 있는 사람이 있으면 내보내는 일(명도)을 직접 해야 하니 비용과 시간을 계산에 넣으세요.']);
   if (it.fails >= 4) r.push([`유찰 ${it.fails}회`, '여러 번 팔리지 않은 이유가 있을 수 있어요. 권리관계·현장 상태를 꼭 확인하세요.']);
   if (/지분|토지만|건물만|제시외/.test(it.t)) r.push(['물건명에 주의 단어', '지분·토지만·건물만·제시외 같은 표현이 있어요. 공고문에서 범위를 확인하세요.']);
+  if (it.rate != null && it.rate < 30) r.push(['가격이 비정상적으로 낮아요', `감정가의 ${it.rate}%예요. 이렇게 싼 물건은 낙찰자가 떠안는 임차인 보증금, 일부 지분만 파는 경우, 건물만 또는 토지만 파는 경우처럼 숨은 조건이 있는 경우가 많아요. 공고문 유의사항을 꼭 확인하세요.`]);
   if (it.min === null) r.push(['최저가 비공개', '최저 입찰가가 공개되지 않은 물건이에요.']);
   if ((it.cat === 'home') && !it.mkt) r.push(['시세 비교 없음', '주변 실거래 자료를 찾지 못했어요. 시세를 직접 확인하세요.']);
   return r;
@@ -485,7 +516,7 @@ function itemPage(it, trades, similar, demo, updatedAt) {
 ${canonical ? `<link rel="canonical" href="${esc(canonical)}">` : ''}
 <meta property="og:title" content="${esc(title)}">
 <meta property="og:description" content="${esc(desc)}">
-${it.thumb ? `<meta property="og:image" content="${esc(it.thumb)}">` : ''}
+<meta property="og:image" content="${esc(it.thumb ? (SITE + it.thumb) : (SITE ? SITE + '/og.png' : '../og.png'))}">
 <meta name="theme-color" content="#16181D">
 <link rel="manifest" href="../manifest.webmanifest">
 <link rel="icon" href="../icon.svg" type="image/svg+xml">
@@ -503,7 +534,7 @@ ${it.thumb ? `<meta property="og:image" content="${esc(it.thumb)}">` : ''}
 </span>
 </div>
 ${demo ? '<div class="demo-bar">지금 보이는 물건은 예시 데이터예요. 인증키를 넣으면 실제 공매 물건으로 바뀌어요.</div>' : ''}
-<div class="photo ${it.thumb ? '' : 'photo-empty'}">${it.thumb ? `<img src="${esc(it.thumb)}" alt="${esc(it.t)} 사진" referrerpolicy="no-referrer">` : `<span>사진이 없는 물건이에요</span>`}</div>
+<div class="photo ${it.thumb ? '' : 'photo-empty'}">${it.thumb ? `<img src="${esc(it.thumb)}" alt="${esc(it.t)} 사진" onerror="this.parentNode.className='photo photo-empty';this.outerHTML='<span>사진을 불러오지 못했어요. 온비드 원문에서 확인해 주세요.</span>'">` : `<span>사진이 없는 물건이에요</span>`}</div>
 
 <section class="card-block">
 <div class="badges">
@@ -514,7 +545,7 @@ ${it.rank ? `<span class="badge badge-hot">온비드 관심 ${it.rank}위</span>
 <span class="badge badge-red" data-dday="${esc(it.en || '')}">마감 -</span>
 </div>
 <h1 class="item-title">${esc(it.t)}</h1>
-<p class="muted">${esc(region)} · 유찰 ${it.fails}회</p>
+<p class="muted">${esc(it.addr && it.addr !== it.t ? it.addr : region)} · 유찰 ${it.fails}회${it.st && new Date(it.st).getTime() > Date.now() ? ` · 입찰 시작 ${esc(kdate(it.st))}` : ''}</p>
 <div class="price-box">
 <div class="price-main">
 <div><span class="muted small">최저 입찰가</span><strong class="price-big">${won(it.min)}</strong></div>
@@ -631,7 +662,7 @@ ${similar.length ? `<section class="card-block no-pad-x"><h2 class="pad-x">비�
 </div>
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
-<script type="application/json" id="item-data">${JSON.stringify({ id: it.id, t: it.t, cat: it.cat, appr: it.appr, min: it.min, en: it.en, mkt: it.mkt || null }).replace(/</g, '\\u003c')}</script>
+<script type="application/json" id="item-data">${JSON.stringify({ id: it.id, t: it.t, cat: it.cat, appr: it.appr, min: it.min, st: it.st, en: it.en, mkt: it.mkt || null }).replace(/</g, '\\u003c')}</script>
 <script src="../item.js" defer></script>
 </body>
 </html>`;
@@ -722,13 +753,13 @@ async function main() {
   await fs.mkdir(path.join(DIST, 'data'), { recursive: true });
   await fs.mkdir(path.join(DIST, 'item'), { recursive: true });
 
-  const LIST_MAX = Number(process.env.LIST_MAX || 4000);
+  const LIST_MAX = Number(process.env.LIST_MAX || 2500);
   const prio = (it) => (it.cat === 'home' ? 3 : it.cat === 'shop' ? 1.5 : it.cat === 'goods' || it.cat === 'car' ? 2 : 0)
-    + (it.rate != null ? (100 - it.rate) / 12 : 0) + (it.mkt ? 3 : 0) + (it.rank ? 10 : 0) + (it.isNew ? 1 : 0)
+    + (it.rate != null && it.rate >= 30 ? (100 - it.rate) / 12 : 0) + (it.mkt && it.mkt.ratio >= 40 ? 3 : 0) + (it.rank ? 10 : 0) + (it.isNew ? 1 : 0)
     + (it.en && new Date(it.en).getTime() - now < 3 * 864e5 ? 2 : 0) + (/서울|경기/.test(it.sd) ? 1.5 : 0);
   const listed = items.length > LIST_MAX ? [...items].sort((a, b) => prio(b) - prio(a)).slice(0, LIST_MAX) : items;
   const slim = listed.map((it) => {
-    const { pnu, evc, how, org, req, land, bld, url, prop, alc, key, ...rest } = it;
+    const { pnu, evc, how, org, req, land, bld, url, prop, alc, key, addr, mod, stat, ...rest } = it;
     return { ...rest, risk: risksOf(it).filter(([h]) => h !== '시세 비교 없음' && !h.startsWith('명도')).length };
   });
   const recentResults = results.filter((r) => r.cat !== 'goods' || r.t).slice(0, 12);
