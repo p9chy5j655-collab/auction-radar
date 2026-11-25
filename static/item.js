@@ -1,6 +1,7 @@
 (function () {
   'use strict';
-  var $ = function (id) { return document.getElementById(id); };
+  // 물건 종류마다 화면 구성이 달라 없는 칸이 있어도 오류 없이 0으로 계산해요
+  var $ = function (id) { return document.getElementById(id) || document.createElement('input'); };
   var it = JSON.parse($('item-data').textContent);
   var store = {
     get: function (k, d) { try { var v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
@@ -97,7 +98,7 @@
           ? '최저 입찰가보다 <b style="color:#86EFAC">' + won(gap) + '</b> 여유가 있어요. 이 범위 안에서 경쟁을 고려해 정하세요.'
           : '최저 입찰가보다 <b style="color:#FDA29B">' + won(-gap) + '</b> 부족해요. 이 조건이면 입찰을 다시 생각해 보세요.') + '</span>';
       }
-      html += '<span class="line">세금·등기비 약 ' + won(maxBid * (tax + fee)) + ' + 수리·명도 ' + won(fixed) + ' = 부대비용 약 ' + won(cost) + '</span>';
+      html += '<span class="line">' + (G ? (it.cat === 'car' ? '이전등록비 약 ' + won(maxBid * (tax + fee)) + ' + 수리비 ' : '운반·수리비 ') : '세금·등기비 약 ' + won(maxBid * (tax + fee)) + ' + 수리·명도 ') + won(fixed) + ' = 부대비용 약 ' + won(cost) + '</span>';
     }
     $('mbResult').innerHTML = html;
     var q = $('quick').querySelector('[data-v="max"]');
@@ -109,7 +110,10 @@
   bidInput.value = it.min ? Math.round(it.min / 10000) : '';
   var quick = [['최저가로', function () { return it.min ? Math.round(it.min / 10000) : 0; }]];
   quick.push(['최대 입찰가로', function () { return maxBid ? Math.round(maxBid / 10000) : 0; }, 'max']);
-  quick.push(['+500만', function () { return val('bid') + 500; }], ['+1,000만', function () { return val('bid') + 1000; }], ['−500만', function () { return Math.max(0, val('bid') - 500); }]);
+  var G = it.cat === 'goods' || it.cat === 'car';
+  var stepA = G && (it.min || 0) < 1e7 ? 10 : 500, stepB = stepA * 2;
+  var lbl = function (n) { return n >= 1000 ? (n / 1000).toLocaleString('ko-KR') + ',000만' : n + '만'; };
+  quick.push(['+' + lbl(stepA), function () { return val('bid') + stepA; }], ['+' + lbl(stepB), function () { return val('bid') + stepB; }], ['−' + lbl(stepA), function () { return Math.max(0, val('bid') - stepA); }]);
   $('quick').innerHTML = quick.map(function (q, i) { return '<button class="chip" data-q="' + i + '"' + (q[2] ? ' data-v="' + q[2] + '"' : '') + '>' + q[0] + '</button>'; }).join('');
   $('quick').addEventListener('click', function (e) {
     var b = e.target.closest('[data-q]'); if (!b) return;
@@ -137,6 +141,7 @@
   function link(label, href) { return '<a class="mini-btn" href="' + href + '" target="_blank" rel="noopener">' + label + '</a>'; }
   function btn(label, act) { return '<button class="mini-btn" type="button" data-act="' + act + '">' + label + '</button>'; }
   var onbid = it.url ? link('온비드 원문 열기', it.url) : '';
+  var place = it.place || '';
   var mapBtns = addr ? link('네이버 지도', 'https://map.naver.com/p/search/' + addrQ) + link('카카오맵', 'https://map.kakao.com/?q=' + addrQ) : '';
   var steps;
   if (isRE) {
@@ -157,16 +162,62 @@
       ['마감 일정 저장', '입찰 마감을 캘린더에 넣어 둬요.', btn('구글 캘린더', 'gcal') + btn('휴대폰 캘린더', 'ics')]
     ];
   } else {
-    var car = it.cat === 'car';
-    steps = [
-      ['공고문 원문 읽기', '보관 장소, 인도 방법과 기한, 보관료가 있는지 확인해요.', onbid],
-      ['실물 확인하기', '보관 장소에 미리 가서 상태를 볼 수 있는지 공고문의 연락처로 문의해요.', mapBtns],
-      car ? ['차량 이력 확인', '자동차등록원부로 압류·저당을, 보험개발원 카히스토리로 사고 이력을 확인해요. 차량번호는 공고문에서 확인하세요.', link('정부24', 'https://www.gov.kr') + link('카히스토리', 'https://www.carhistory.or.kr')]
-          : ['진품·상태 확인', '명품·귀금속은 정품 여부와 보증서, 전자제품은 작동 여부를 확인할 수 있는지 알아봐요.', ''],
-      ['시세 비교', '이 페이지의 시세 검색 버튼으로 비슷한 물건 가격을 봐요.', btn('시세 보기', 'mkt')],
-      ['돈 계획 세우기', car ? '이전 등록비·취득세(차량)도 함께 계산해요.' : '운반비가 드는지도 함께 생각해요.', btn('돈 계획 보기', 'money')],
-      ['마감 일정 저장', '입찰 마감을 캘린더에 넣어 둬요.', btn('구글 캘린더', 'gcal') + btn('휴대폰 캘린더', 'ics')]
-    ];
+    // 동산·차량: 종류마다 확인할 것이 달라요
+    var mapPlace = place ? link('보관 장소 지도', 'https://map.naver.com/p/search/' + encodeURIComponent(place)) : '';
+    var nv = function (q) { return 'https://search.naver.com/search.naver?query=' + encodeURIComponent(q); };
+    var MONEY = ['돈 계획 세우기', '보증금(입찰가의 10%)과 잔금, 운반비까지 내 현금으로 되는지 확인해요. 동산은 대출이 거의 안 돼요.', btn('돈 계획 보기', 'money')];
+    var CAL = ['마감 일정 저장', '입찰 마감을 놓치지 않게 캘린더에 넣어 둬요. 하루 전 알림이 같이 들어가요.', btn('구글 캘린더', 'gcal') + btn('휴대폰 캘린더', 'ics')];
+    var PICK = ['받으러 갈 날 정하기', '낙찰 뒤 잔금을 내고 정해진 기한 안에 보관 장소에서 직접 받아 와요. 거리와 시간을 미리 잡아 두세요.', mapPlace];
+    var sub = it.sub;
+    if (it.cat === 'car') {
+      steps = [
+        ['차량번호·보관소 확인', '온비드 원문에서 차량번호, 보관소 위치, 열쇠·서류가 있는지 확인해요. 아래 단계에서 차량번호가 필요해요.', onbid + mapPlace],
+        ['사고·침수 이력 조회', '보험개발원 카히스토리에서 차량번호로 사고·침수·용도 변경 이력을 볼 수 있어요(유료).', link('카히스토리', 'https://www.carhistory.or.kr')],
+        ['압류·저당 확인', '자동차등록원부로 압류·저당이 몇 건인지 봐요. 공매 뒤 말소되는지는 공고문 조건으로 확인해요.', link('정부24', 'https://www.gov.kr') + onbid],
+        ['같은 차 시세 보기', '같은 차종·연식 중고차 시세와 비교해요. 주행거리와 상태에 따라 차이가 커요.', btn('시세 보기', 'mkt')],
+        ['가져오는 방법 정하기', '이전등록과 보험 가입 전에는 바로 운전해 오기 어려울 수 있어요. 탁송·견인 비용을 알아봐요.', link('탁송 비용 찾아보기', nv('차량 탁송 비용'))],
+        ['이전등록 준비', '낙찰 뒤 차량등록사업소에서 이전등록을 하고 취득세를 내요. 계산기의 이전등록비 칸에 반영돼 있어요.', btn('계산기 보기', 'calc')],
+        MONEY, CAL
+      ];
+    } else if (sub === 'luxury') {
+      steps = [
+        ['사진에서 모델·각인 찾기', '원문 사진을 크게 보고 모델명, 레퍼런스 번호, 시리얼 각인이 보이는지 확인해요. 찾으면 위 \'시장에선 얼마일까\'에 넣어 보세요.', onbid + btn('제품번호 넣기', 'code')],
+        ['구성품 확인', '보증서, 박스, 영수증, 감정서가 함께 오는지 공고문에서 봐요. 구성품이 없으면 되팔 때 값이 크게 떨어져요.', onbid],
+        ['같은 모델 시세 보기', '제품번호가 확인된 경우에만 중고·새 제품 가격을 비교해요. 비슷한 다른 모델 가격과 섞지 마세요.', btn('시세 보기', 'mkt')],
+        ['정품 확인 방법 정하기', '감정가는 정품을 보장하지 않아요. 낙찰 뒤 어디서 정품 감정을 받을지, 비용은 얼마인지 미리 알아봐요.', link('정품 감정 찾아보기', nv('명품 정품 감정 비용'))],
+        PICK, MONEY, CAL
+      ];
+    } else if (sub === 'gold') {
+      steps = [
+        ['순도·무게 확인', '공고문이나 감정서에서 순도(24K·18K·14K)와 무게(g·돈)를 찾아요. 1돈은 3.75g이에요.', onbid],
+        ['오늘 금값으로 따져 보기', '순금 1돈 시세 × 무게 × 순도 비율로 대략적인 값을 계산해요. 18K는 약 75%, 14K는 약 58.5%예요.', link('오늘 금 시세', nv('오늘 금시세'))],
+        ['팔 곳과 매입가 알아보기', '금은방이 사 주는 값(매입가)은 파는 값보다 낮아요. 장신구는 세공비를 쳐 주지 않는 경우가 많아요.', link('금 매입가 찾아보기', nv('금 매입 시세'))],
+        PICK, MONEY, CAL
+      ];
+    } else if (sub === 'elec') {
+      steps = [
+        ['정확한 모델번호 확인', '원문 사진의 라벨이나 설명에서 모델번호(예: SM-S928N, A2338)를 찾아요. 같은 이름도 모델번호에 따라 값이 크게 달라요.', onbid + btn('제품번호 넣기', 'code')],
+        ['작동·구성품 확인', '작동 확인 여부, 충전기·케이블 같은 구성품이 있는지 공고문에서 봐요. 표시가 없으면 고장 가능성을 감안해요.', onbid],
+        ['잠금·초기화 문제 생각하기', '휴대폰·노트북은 이전 사용자 계정 잠금이 걸려 있으면 쓰기 어려워요. 공고문에 초기화 여부가 있는지 확인해요.', onbid],
+        ['같은 모델 시세 보기', '모델번호가 확인되면 중고 시세와 새 제품 가격을 비교해요. 출시가 오래된 제품은 값이 빨리 떨어져요.', btn('시세 보기', 'mkt')],
+        PICK, MONEY, CAL
+      ];
+    } else if (sub === 'heavy' || sub === 'machine') {
+      steps = [
+        ['공고문 원문 읽기', '수량, 연식, 작동 여부, 인도 기한과 보관료 조건을 확인해요.', onbid],
+        ['운반 방법·비용 알아보기', '트럭이나 크레인이 필요할 수 있어요. 보관 장소에서 받을 곳까지 운반 견적을 먼저 받아 보세요.', mapPlace + link('운반 견적 찾아보기', nv((sub === 'heavy' ? '중장비' : '기계') + ' 운반 비용'))],
+        ['등록·면허 필요 여부', sub === 'heavy' ? '건설기계·선박은 등록이 필요하고, 운전하려면 해당 면허가 있어야 해요. 등록 서류가 함께 오는지 공고문에서 봐요.' : '의료·산업 기계는 쓰는 데 허가나 신고가 필요할 수 있어요. 어디에 쓸지 먼저 정해요.', onbid],
+        ['되팔 곳 생각해 보기', '같은 종류 중고 장비 시세를 찾아보고, 사 줄 곳이 있는지 알아봐요.', btn('시세 보기', 'mkt')],
+        MONEY, CAL
+      ];
+    } else {
+      steps = [
+        ['수량·구성 확인', '몇 개를 한꺼번에 파는지, 무엇이 포함되는지 공고문에서 확인해요. 동산은 묶음으로 파는 경우가 많아요.', onbid],
+        ['사진으로 상태 보기', '미리 실물을 보기 어려운 경우가 많아요. 사진과 상세 설명으로 상태를 확인하고, 궁금한 점은 담당기관에 문의해요.', onbid],
+        ['실어 올 차 정하기', '부피와 무게를 보고 승용차로 될지, 화물차가 필요한지 정해요.', mapPlace],
+        MONEY, CAL
+      ];
+    }
   }
   var done = store.get('ar_chk_' + it.id, {});
   function paintChecks() {
@@ -182,25 +233,26 @@
     var box = $('money'); if (!box) return;
     var bid = (val('bid') || (it.min ? it.min / 10000 : 0)) * 10000;
     var taxRate = (val('mbTax') + val('mbFee')) / 100;
+    var fixedCost = isRE ? 0 : val('mbRepair') * 10000;
     var cash = store.get('ar_cash', '');
-    var loan = store.get('ar_loan', isRE ? 50 : 0);
-    box.innerHTML = '<div class="form-grid"><label>내가 쓸 수 있는 현금<span class="input-row sm"><input id="cash" type="number" inputmode="numeric" value="' + cash + '" placeholder="예: 10000"><span>만원</span></span></label>' +
-      '<label>대출 예상 비율<span class="input-row sm"><input id="loan" type="number" inputmode="decimal" min="0" max="90" value="' + loan + '"><span>%</span></span></label></div><div id="moneyOut" class="money-out"></div>';
+    var loan = isRE ? store.get('ar_loan', 50) : 0;
+    box.innerHTML = '<div class="form-grid"><label>내가 쓸 수 있는 현금<span class="input-row sm"><input id="cash" type="number" inputmode="numeric" value="' + cash + '" placeholder="' + (isRE ? '예: 10000' : '예: 300') + '"><span>만원</span></span></label>' +
+      (isRE ? '<label>대출 예상 비율<span class="input-row sm"><input id="loan" type="number" inputmode="decimal" min="0" max="90" value="' + loan + '"><span>%</span></span></label>' : '') + '</div><div id="moneyOut" class="money-out"></div>';
     box.hidden = false;
     function out() {
-      var c = (parseFloat($('cash').value) || 0) * 10000, l = (parseFloat($('loan').value) || 0) / 100;
-      store.set('ar_cash', $('cash').value); store.set('ar_loan', $('loan').value);
-      var deposit = bid * 0.1, rest = bid - deposit, loanAmt = rest * l, extra = bid * taxRate;
+      var c = (parseFloat($('cash').value) || 0) * 10000, l = isRE ? (parseFloat($('loan').value) || 0) / 100 : 0;
+      store.set('ar_cash', $('cash').value); if (isRE) store.set('ar_loan', $('loan').value);
+      var deposit = bid * 0.1, rest = bid - deposit, loanAmt = rest * l, extra = bid * taxRate + fixedCost;
       var need = deposit + (rest - loanAmt) + extra;
       $('moneyOut').innerHTML =
         '<div class="mo-row"><span>입찰가 (내 입찰가 기준)</span><b>' + won(bid) + '</b></div>' +
         '<div class="mo-row"><span>① 입찰할 때 보증금 10%</span><b>' + won(deposit) + '</b></div>' +
         '<div class="mo-row"><span>② 낙찰 뒤 잔금</span><b>' + won(rest) + '</b></div>' +
         (l ? '<div class="mo-row"><span>　 그중 대출 예상 ' + Math.round(l * 100) + '%</span><b>−' + won(loanAmt) + '</b></div>' : '') +
-        '<div class="mo-row"><span>③ 세금·등기비 등</span><b>' + won(extra) + '</b></div>' +
+        '<div class="mo-row"><span>③ ' + (isRE ? '세금·등기비 등' : it.cat === 'car' ? '이전등록비·수리·탁송비' : '운반·수리비') + '</span><b>' + won(extra) + '</b></div>' +
         '<div class="mo-row total"><span>내 돈으로 필요한 금액</span><b>' + won(need) + '</b></div>' +
-        (c ? '<p class="' + (c >= need ? 'mo-ok' : 'mo-bad') + '">' + (c >= need ? '현금으로 충분해요. 여유 ' + won(c - need) : won(need - c) + ' 부족해요. 입찰가나 대출 계획을 다시 생각해 보세요.') + '</p>' : '') +
-        '<p class="note">대출은 낙찰 후 심사라 안 나올 수도 있어요. 잔금 납부 기한은 공고문에서 확인하세요.</p>';
+        (c ? '<p class="' + (c >= need ? 'mo-ok' : 'mo-bad') + '">' + (c >= need ? '현금으로 충분해요. 여유 ' + won(c - need) : won(need - c) + (isRE ? ' 부족해요. 입찰가나 대출 계획을 다시 생각해 보세요.' : ' 부족해요. 동산은 대출이 어려우니 입찰가를 낮춰 보세요.')) + '</p>' : '') +
+        '<p class="note">' + (isRE ? '대출은 낙찰 후 심사라 안 나올 수도 있어요. ' : '③은 위 계산기에 넣은 값이에요. ') + '잔금 납부 기한은 공고문에서 확인하세요.</p>';
     }
     box.addEventListener('input', out); out();
   }
@@ -219,6 +271,9 @@
       if (navigator.clipboard) navigator.clipboard.writeText(addr).then(function () { toast('주소를 복사했어요.'); }, function () { toast(addr); }); else toast(addr);
     } else if (act === 'mkt') {
       var t = document.querySelector('.compare, .link-row, #maxbid'); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } else if (act === 'code' || act === 'calc') {
+      var tg = act === 'code' ? (document.getElementById('codeIn') || document.querySelector('.link-row')) : document.getElementById('maxbid');
+      if (tg) { if (tg.tagName === 'DETAILS') tg.open = true; tg.scrollIntoView({ behavior: 'smooth', block: 'center' }); if (tg.focus && act === 'code') tg.focus(); }
     } else if (act === 'money') {
       var m = $('money'); if (m && m.hidden) moneyPlan(); else if (m) m.hidden = true;
     } else if (act === 'gcal' || act === 'ics') {
@@ -238,6 +293,20 @@
     }
   });
   paintChecks();
+
+  // 제품번호 직접 입력 → 정확한 번호로만 검색
+  var codeIn = $('codeIn');
+  if (codeIn) {
+    codeIn.addEventListener('input', function () {
+      var c = codeIn.value.trim();
+      var ok = /[A-Za-z0-9]/.test(c) && c.length >= 3;
+      $('codeLinks').hidden = !ok;
+      if (ok) {
+        $('codeUsed').href = 'https://search.naver.com/search.naver?query=' + encodeURIComponent(c + ' 중고 시세');
+        $('codeNew').href = 'https://search.shopping.naver.com/search/all?query=' + encodeURIComponent(c);
+      }
+    });
+  }
 
   calcMax(); calcBid();
 })();
