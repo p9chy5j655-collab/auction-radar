@@ -353,6 +353,7 @@ async function fetchResults() {
     } catch (e) { log('입찰결과 실패', type, e.message); }
   }
   if (RESULT_URL && !out.length) log('입찰결과에서 낙찰가를 찾지 못했어요. 위 필드 목록을 보고 ONBID_RESULT_PRICE_FIELD 변수를 정해 주세요.');
+  else log(`입찰결과 낙찰 사례 ${out.length}건 집계 (최근 2주·매각 기준)`);
   return out;
 }
 function regionRates(results) {
