@@ -2,14 +2,31 @@
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
   var PAGE = 30;
-  var CAT = { home: '아파트·주택', shop: '상가·업무', land: '토지', etc: '기타 부동산', goods: '명품·동산', car: '차량' };
+  var CAT = { home: '아파트·주택', shop: '상가·업무', land: '토지', etc: '기타 부동산', goods: '동산', car: '차량' };
+  var SUB = { right: '주식·채권·권리', gold: '귀금속·금', luxury: '명품·시계', elec: '전자제품', machine: '기계·장비', living: '가구·생활', stock: '재고·원자재', goods_etc: '기타 동산', car: '자동차', heavy: '중장비·선박' };
+  // 구경하는 재미가 있는 물건(이색): 주식·채권·재고·기계는 빼요
+  var ODD = { luxury: 1, gold: 1, elec: 1, living: 1, car: 1, heavy: 1 };
+  var GROUP = { luxury: 'gL', gold: 'gL', elec: 'eL', living: 'eL', car: 'cH', heavy: 'cH', right: 'oR', machine: 'oR', stock: 'oR', goods_etc: 'oR' };
+  function isOdd(it) { return !!ODD[it.sub] || (!it.sub && (it.cat === 'goods' || it.cat === 'car')); }
+  function grp(it) { return GROUP[it.sub] || it.cat; }
+  function catLabel(it) { return SUB[it.sub] || CAT[it.cat]; }
+  function iconKey(it) { return it.sub && ICON[it.sub] ? it.sub : it.cat; }
   var ICON = {
     home: '<path d="M4 21V9l8-5 8 5v12"/><path d="M9 21v-6h6v6"/>',
     shop: '<path d="M4 9l1-5h14l1 5"/><path d="M4 9v11h16V9"/><path d="M4 9h16"/><path d="M10 20v-5h4v5"/>',
     land: '<path d="M3 20l6-9 4 5 3-4 5 8z"/><circle cx="17" cy="6" r="2"/>',
     etc: '<rect x="3" y="7" width="18" height="13" rx="1"/><path d="M8 7V4h8v3"/>',
     goods: '<path d="M6 3h12l3 6-9 12L3 9z"/><path d="M3 9h18"/><path d="M12 21L8 9l4-6 4 6z"/>',
-    car: '<path d="M5 16l1.5-5a2 2 0 0 1 2-1.5h7a2 2 0 0 1 2 1.5L19 16"/><rect x="3" y="16" width="18" height="3" rx="1"/><circle cx="7.5" cy="19.5" r="1.5"/><circle cx="16.5" cy="19.5" r="1.5"/>'
+    car: '<path d="M5 16l1.5-5a2 2 0 0 1 2-1.5h7a2 2 0 0 1 2 1.5L19 16"/><rect x="3" y="16" width="18" height="3" rx="1"/><circle cx="7.5" cy="19.5" r="1.5"/><circle cx="16.5" cy="19.5" r="1.5"/>',
+    luxury: '<path d="M6 3h12l3 6-9 12L3 9z"/><path d="M3 9h18"/><path d="M12 21L8 9l4-6 4 6z"/>',
+    gold: '<path d="M4 17l2-6h12l2 6z"/><path d="M8 11l1.5-5h5L16 11"/><path d="M4 17h16"/>',
+    elec: '<rect x="4" y="5" width="16" height="11" rx="1.5"/><path d="M2 19h20"/>',
+    living: '<path d="M4 12V8a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v4"/><path d="M3 12h18v5H3z"/><path d="M5 17v2M19 17v2"/>',
+    machine: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/>',
+    stock: '<path d="M3 7l9-4 9 4v10l-9 4-9-4z"/><path d="M3 7l9 4 9-4M12 11v10"/>',
+    right: '<path d="M6 2h9l5 5v15H6z"/><path d="M14 2v6h6"/><path d="M9 13h7M9 17h5"/>',
+    goods_etc: '<path d="M3 7l9-4 9 4v10l-9 4-9-4z"/><path d="M3 7l9 4 9-4"/>',
+    heavy: '<path d="M3 17h11v-5H8l-2 5"/><path d="M14 13l4-7 3 2-2 5"/><circle cx="6" cy="19" r="1.5"/><circle cx="12" cy="19" r="1.5"/>'
   };
   var HEART = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg>';
   var SHARE = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>';
@@ -64,11 +81,13 @@
   }
   // 감정가 30% 미만은 숨은 조건(인수 보증금·지분 등)이 많아 추천에서 빼요
   function lowball(it) { return it.rate != null && it.rate < 30; }
+  function cheapOdd(it) { return isOdd(it) && it.min != null && it.min <= 1000000 && !it.risk && !lowball(it); }
   function isHalf(it) { return it.rate != null && it.rate <= 50 && !lowball(it); }
   function isCheap(it) { return it.mkt && it.mkt.ratio <= 85 && it.mkt.ratio >= 40 && !lowball(it); }
   function score(it) {
     var s = 0;
-    if (it.cat === 'home') s += 3; else if (it.cat === 'shop' || it.cat === 'goods' || it.cat === 'car') s += 1.5;
+    if (it.cat === 'home') s += 3; else if (it.cat === 'shop' || isOdd(it)) s += 1.5;
+    if (it.thumb) s += 1;
     if (/서울|경기/.test(it.sd)) s += 2;
     if (it.rate != null && !lowball(it)) s += Math.max(0, (100 - it.rate) / 12);
     if (isCheap(it)) s += Math.max(0, (100 - it.mkt.ratio) / 6);
@@ -86,7 +105,7 @@
     if (c.purpose === 'live') s += mk / 4 - (it.risk || 0) * 3 + (it.cat === 'home' ? 2 : 0);
     else if (c.purpose === 'invest') s += disc / 8 + mk / 3;
     else if (c.purpose === 'small') s += it.min != null ? Math.max(0, 6 - it.min / 2e7) : 0;
-    else if (c.purpose === 'fun') s += (it.cat === 'goods' || it.cat === 'car' ? 6 : 0) + disc / 10;
+    else if (c.purpose === 'fun') s += (isOdd(it) ? 6 : 0) + disc / 10;
     return s;
   }
   function matchesCond(it, c) {
@@ -122,6 +141,7 @@
       { id: 'top', label: '주목', head: '주목할 물건', sub: '할인 폭, 지역, 주변 시세와의 차이를 함께 따져 골랐어요.' },
       { id: 'rank', label: '온비드 인기', head: '온비드에서 관심 많은 물건', sub: '온비드에서 일주일간 관심 저장이 많았던 순위예요.' },
       { id: 'half', label: '반값', head: '감정가 50% 이하 물건', sub: '여러 번 유찰돼 값이 많이 내려간 물건이에요.' },
+      { id: 'cheapodd', label: '100만원 이하', head: '100만원 이하로 시작하는 물건', sub: '명품·전자제품·차량 중 최저가가 100만원 이하인 물건이에요. 위험 신호가 있는 물건은 뺐어요.' },
       { id: 'cheap', label: '시세보다 싼', head: '주변 시세보다 싼 아파트·주택', sub: '최저가가 같은 동 비슷한 면적 실거래 중간값의 85% 이하예요.' },
       { id: 'new', label: '새 물건', head: '새로 올라온 물건', sub: '최근 48시간 안에 입찰이 시작됐거나 바뀐 물건이에요.' },
       { id: 'closing', label: '마감 임박', head: '48시간 안에 마감', sub: '서두르세요. 입찰 마감이 가까운 순서예요.' }
@@ -137,23 +157,24 @@
   function filtered() {
     var q = st.q.trim().toLowerCase();
     var list = data.items.filter(function (it) {
-      if (st.cat !== 'all' && it.cat !== st.cat) return false;
+      if (st.cat !== 'all' && grp(it) !== st.cat) return false;
       if (st.sido && shortSido(it.sd) !== st.sido) return false;
       if (q && (it.t + ' ' + it.sd + ' ' + it.sgg + ' ' + it.emd + ' ' + it.use + ' ' + (CAT[it.cat] || '')).toLowerCase().indexOf(q) === -1) return false;
       switch (st.tab) {
         case 'half': return isHalf(it);
         case 'rank': return !!it.rank;
+        case 'cheapodd': return cheapOdd(it);
         case 'cheap': return isCheap(it);
         case 'new': return it.isNew;
         case 'closing': return hoursLeft(it) <= 48;
-        case 'odd': return it.cat === 'goods' || it.cat === 'car';
+        case 'odd': return isOdd(it);
         case 'liked': return !!liked[it.id];
         case 'cond': return matchesCond(it, cond);
         default: return true;
       }
     });
     var sort = st.sort;
-    if (sort === 'auto') sort = st.tab === 'rank' ? 'rank' : st.tab === 'half' ? 'rate' : st.tab === 'closing' ? 'end' : st.tab === 'cheap' ? 'mkt' : st.tab === 'cond' ? 'fit' : 'score';
+    if (sort === 'auto') sort = st.tab === 'cheapodd' ? 'low' : st.tab === 'rank' ? 'rank' : st.tab === 'half' ? 'rate' : st.tab === 'closing' ? 'end' : st.tab === 'cheap' ? 'mkt' : st.tab === 'cond' ? 'fit' : 'score';
     var cmp = {
       score: function (a, b) { return score(b) - score(a); },
       rank: function (a, b) { return (a.rank || 99) - (b.rank || 99); },
@@ -168,16 +189,16 @@
   }
 
   function thumbHtml(it) {
-    if (it.thumb) return '<div class="thumb ' + it.cat + '"><img src="' + esc(it.thumb) + '" alt="" loading="lazy" onerror="this.outerHTML=\'<svg viewBox=&quot;0 0 24 24&quot; aria-hidden=&quot;true&quot;>' + ICON[it.cat].replace(/"/g, '&quot;') + '</svg>\'"></div>';
-    return '<div class="thumb ' + it.cat + '"><svg viewBox="0 0 24 24" aria-hidden="true">' + ICON[it.cat] + '</svg></div>';
+    if (it.thumb) return '<div class="thumb ' + iconKey(it) + '"><img src="' + esc(it.thumb) + '" alt="" loading="lazy" onerror="this.outerHTML=\'<svg viewBox=&quot;0 0 24 24&quot; aria-hidden=&quot;true&quot;>' + ICON[iconKey(it)].replace(/"/g, '&quot;') + '</svg>\'"></div>';
+    return '<div class="thumb ' + iconKey(it) + '"><svg viewBox="0 0 24 24" aria-hidden="true">' + ICON[iconKey(it)] + '</svg></div>';
   }
 
   function cardHtml(it) {
     var isLiked = !!liked[it.id];
-    var badges = '<span class="badge">' + esc(CAT[it.cat]) + '</span>' +
+    var badges = '<span class="badge">' + esc(catLabel(it)) + '</span>' +
       (it.rank ? '<span class="badge badge-hot">관심 ' + it.rank + '위</span>' : '') +
       (it.isNew ? '<span class="badge badge-new">NEW</span>' : '') +
-      (it.cat === 'goods' || it.cat === 'car' ? '<span class="badge badge-odd">이색</span>' : '') +
+      (isOdd(it) ? '<span class="badge badge-odd">이색</span>' : '') +
       (it.risk ? '<span class="badge badge-warn">주의 ' + it.risk + '</span>' : '') +
       (it.pv ? '<span class="badge badge-blue">수의계약</span>' : '') +
       '<span class="dday">' + esc(ddayLabel(it)) + '</span>';
@@ -202,8 +223,8 @@
     }).join('');
 
     var cats = [['all', '전체'], ['home', CAT.home], ['shop', CAT.shop], ['land', CAT.land], ['etc', '기타']];
-    if (data.hasGoods) cats.push(['goods', CAT.goods]);
-    if (data.hasCar) cats.push(['car', CAT.car]);
+    var present = {}; data.items.forEach(function (i) { present[grp(i)] = 1; });
+    [['gL', '명품·귀금속'], ['eL', '전자·생활'], ['cH', '차량·중장비'], ['oR', '권리·기타 동산']].forEach(function (g) { if (present[g[0]]) cats.push(g); });
     $('cats').innerHTML = cats.map(function (c) {
       return '<button class="chip" data-cat="' + c[0] + '" aria-pressed="' + (st.cat === c[0]) + '">' + esc(c[1]) + '</button>';
     }).join('');
@@ -237,13 +258,17 @@
       '<span class="mini-price">' + won(it.min) + '</span></a>';
   }
   function renderPick() {
-    var pool = data.items.filter(function (i) { return i.min != null && i.rate != null && !i.risk && !notStarted(i) && hoursLeft(i) > 6 && i.cat !== 'goods' && i.cat !== 'car'; });
-    var it = pool.sort(function (a, b) { return score(b) - score(a); })[0];
+    var base = data.items.filter(function (i) { return i.min != null && i.rate != null && !i.risk && !lowball(i) && !notStarted(i) && hoursLeft(i) > 6; });
+    var oddPool = base.filter(function (i) { return isOdd(i) && i.thumb; });
+    var it = oddPool.sort(function (a, b) { return score(b) - score(a); })[0];
+    var label = '오늘의 신기한 물건';
+    if (!it) { it = base.filter(function (i) { return !isOdd(i); }).sort(function (a, b) { return score(b) - score(a); })[0]; label = '오늘의 픽'; }
     if (!it) { $('pick').hidden = true; return; }
-    $('pick').innerHTML = '<div class="pick-label">오늘의 픽</div>' +
+    $('pick').innerHTML = '<div class="pick-label">' + label + '</div>' +
       '<a class="pick-card" href="' + itemUrl(it) + '">' +
       '<div class="pick-rate"><span>감정가의</span><b>' + it.rate + '<small>%</small></b></div>' +
-      '<div class="pick-body"><div class="badges"><span class="badge">' + esc(CAT[it.cat]) + '</span>' + (it.rank ? '<span class="badge badge-hot">온비드 관심 ' + it.rank + '위</span>' : '') + '<span class="dday">' + esc(ddayLabel(it)) + '</span></div>' +
+      (it.thumb ? '<div class="pick-photo"><img src="' + esc(it.thumb) + '" alt="" onerror="this.parentNode.remove()"></div>' : '') +
+      '<div class="pick-body"><div class="badges"><span class="badge">' + esc(catLabel(it)) + '</span>' + (it.rank ? '<span class="badge badge-hot">온비드 관심 ' + it.rank + '위</span>' : '') + '<span class="dday">' + esc(ddayLabel(it)) + '</span></div>' +
       '<div class="pick-title">' + esc(it.t) + '</div>' +
       '<div class="pick-price"><b>' + won(it.min) + '</b><s>감정 ' + won(it.appr) + '</s></div>' +
       '<div class="pick-plain">' + esc(plain(it)) + (isCheap(it) ? ' · 주변 시세의 ' + it.mkt.ratio + '%' : '') + '</div>' +
@@ -251,19 +276,66 @@
   }
   function renderShelves(closing) {
     var items = data.items, shelves = [];
+    var odd = items.filter(function (i) { return isOdd(i) && !i.risk; }).sort(function (a, b) { return score(b) - score(a); }).slice(0, 12);
+    if (odd.length) shelves.push({ title: '이게 이 가격?', sub: '명품·금·차량·전자제품', go: 'odd', list: odd, top: function (i) { return '<span class="badge badge-odd">' + esc(catLabel(i)) + '</span>'; } });
+    var small = items.filter(cheapOdd).sort(function (a, b) { return a.min - b.min; }).slice(0, 12);
+    if (small.length) shelves.push({ title: '100만원 이하로 시작', sub: '커피값부터 도전', go: 'cheapodd', list: small, top: function (i) { return '<span class="badge">' + esc(catLabel(i)) + '</span>'; } });
     var ranked = items.filter(function (i) { return i.rank; }).sort(function (a, b) { return a.rank - b.rank; }).slice(0, 10);
     if (ranked.length) shelves.push({ title: '온비드에서 지금 뜨는 물건', sub: '일주일간 관심 저장 순위', go: 'rank', list: ranked, top: function (i) { return '<span class="badge badge-hot">' + i.rank + '위</span>'; } });
-    var odd = items.filter(function (i) { return i.cat === 'goods' || i.cat === 'car'; }).sort(function (a, b) { return score(b) - score(a); }).slice(0, 10);
-    if (odd.length) shelves.push({ title: '이게 이 가격?', sub: '명품·귀금속·차량 공매', go: 'odd', list: odd, top: function (i) { return '<span class="badge badge-odd">' + esc(CAT[i.cat]) + '</span>'; } });
-    var half = items.filter(function (i) { return isHalf(i) && i.cat !== 'goods' && i.cat !== 'car'; }).sort(function (a, b) { return a.rate - b.rate; }).slice(0, 10);
-    if (half.length) shelves.push({ title: '반값 부동산', sub: '감정가 50% 이하', go: 'half', list: half, top: function (i) { return '<span class="badge">' + esc(CAT[i.cat]) + '</span>'; } });
     var cl = closing.slice().sort(function (a, b) { return score(b) - score(a); }).slice(0, 10);
     if (cl.length) shelves.push({ title: '곧 마감돼요', sub: '48시간 이내', go: 'closing', list: cl, top: function (i) { return '<span class="badge badge-red">' + esc(ddayLabel(i)) + '</span>'; } });
+    var half = items.filter(function (i) { return isHalf(i) && !isOdd(i) && i.cat !== 'goods'; }).sort(function (a, b) { return a.rate - b.rate; }).slice(0, 10);
+    if (half.length) shelves.push({ title: '반값 부동산', sub: '감정가 50% 이하', go: 'half', list: half, top: function (i) { return '<span class="badge">' + esc(catLabel(i)) + '</span>'; } });
     $('shelves').innerHTML = shelves.map(function (sh) {
       return '<section><div class="section-head"><h2>' + esc(sh.title) + '</h2><button class="link-btn" data-go="' + sh.go + '">' + esc(sh.sub) + ' · 전체</button></div>' +
         '<div class="scroller">' + sh.list.map(function (i) { return miniHtml(i, sh.top(i)); }).join('') + '</div></section>';
     }).join('');
   }
+  // 낙찰가 맞히기: 최근 실제 낙찰 결과로 4지선다 퀴즈 (기기에만 점수 저장)
+  var quiz = { i: 0, answered: false };
+  function quizPool() {
+    return (data.results || []).filter(function (r) { return r.appr && r.price && r.rate >= 20 && r.rate <= 200; });
+  }
+  function renderQuiz() {
+    var pool = quizPool();
+    if (!pool.length) { $('quiz').hidden = true; return; }
+    $('quiz').hidden = false;
+    var day = Math.floor(Date.now() / 864e5);
+    var r = pool[(day + quiz.i) % pool.length];
+    var sc = store.get('ar_quiz', { right: 0, total: 0, streak: 0 });
+    $('quizScore').textContent = sc.total ? '맞힌 문제 ' + sc.right + '/' + sc.total + (sc.streak > 1 ? ' · ' + sc.streak + '연속' : '') : '';
+    // 정답(실제 낙찰가율)과 그럴듯한 오답 3개
+    var rates = [r.rate], cands = [r.rate - 25, r.rate - 12, r.rate + 12, r.rate + 25, r.rate + 40, r.rate - 35];
+    var seed = (day + quiz.i) % 5;
+    for (var k = 0; rates.length < 4 && k < cands.length; k++) {
+      var c = Math.round(cands[(k + seed) % cands.length]);
+      if (c >= 10 && rates.every(function (x) { return Math.abs(x - c) >= 8; })) rates.push(c);
+    }
+    var opts = rates.map(function (x) { return { rate: x, price: x === r.rate ? r.price : Math.round(r.appr * x / 100 / 1e5) * 1e5, ok: x === r.rate }; })
+      .sort(function (a, b) { return a.price - b.price; });
+    quiz.opts = opts; quiz.r = r; quiz.answered = false;
+    $('quizBody').innerHTML = '<div class="quiz-q"><span class="badge">' + esc(CAT[r.cat] || '공매') + '</span><b>' + esc(r.t) + '</b>' +
+      '<span class="muted small">' + esc([shortSido(r.sd), r.sgg].filter(Boolean).join(' ')) + ' · 감정가 <b>' + won(r.appr) + '</b></span></div>' +
+      '<div class="quiz-opts">' + opts.map(function (o, i) { return '<button class="quiz-opt" data-qa="' + i + '">' + won(o.price) + '</button>'; }).join('') + '</div>' +
+      '<div class="quiz-result" id="quizResult"></div>';
+  }
+  function answerQuiz(i) {
+    if (quiz.answered) return;
+    quiz.answered = true;
+    var o = quiz.opts[i], r = quiz.r;
+    var sc = store.get('ar_quiz', { right: 0, total: 0, streak: 0 });
+    sc.total++; if (o.ok) { sc.right++; sc.streak++; } else sc.streak = 0;
+    store.set('ar_quiz', sc);
+    document.querySelectorAll('.quiz-opt').forEach(function (b, k) {
+      b.disabled = true;
+      if (quiz.opts[k].ok) b.classList.add('ok'); else if (k === i) b.classList.add('no');
+    });
+    $('quizResult').innerHTML = '<p><b>' + (o.ok ? '정답이에요! ' : '아쉬워요. ') + '</b>실제로는 <b>' + won(r.price) + '</b>, 감정가의 <b>' + r.rate + '%</b>에 팔렸어요' +
+      (r.bidders ? ' (' + r.bidders + '명 경쟁)' : '') + '. ' + (r.rate > 100 ? '감정가보다 비싸게 팔렸어요. 인기 물건은 경쟁이 붙으면 이렇게 돼요.' : r.rate < 70 ? '여러 번 유찰돼 값이 많이 내려간 뒤 팔린 경우가 많아요.' : '') + '</p>' +
+      '<div class="quiz-next"><button class="btn-outline" id="quizNext" type="button">다음 문제</button><button class="btn-outline" id="quizShare" type="button">친구에게 내기</button></div>';
+    $('quizScore').textContent = '맞힌 문제 ' + sc.right + '/' + sc.total + (sc.streak > 1 ? ' · ' + sc.streak + '연속' : '');
+  }
+
   function renderResults() {
     var rs = data.results || [];
     $('resultsWrap').hidden = !rs.length;
@@ -282,7 +354,7 @@
     var closing = items.filter(function (i) { return hoursLeft(i) <= 48 && hoursLeft(i) > 0; }).sort(function (a, b) { return hoursLeft(a) - hoursLeft(b); });
     $('sClosing').innerHTML = closing.length + '<small>건</small>';
     $('sHalf').innerHTML = items.filter(isHalf).length + '<small>건</small>';
-    renderPick(); renderShelves(closing); renderResults();
+    renderPick(); renderQuiz(); renderShelves(closing); renderResults();
 
     var counts = {};
     items.forEach(function (i) { var s = shortSido(i.sd); counts[s] = (counts[s] || 0) + 1; });
@@ -294,8 +366,9 @@
     var sgg = {};
     items.filter(function (i) { return i.cat === 'home' || i.cat === 'shop'; }).forEach(function (i) { if (i.sgg) sgg[i.sgg] = (sgg[i.sgg] || 0) + score(i); });
     var hot = Object.keys(sgg).sort(function (a, b) { return sgg[b] - sgg[a]; }).slice(0, 4).map(function (s) { return s.split(' ').pop(); });
+    hot.unshift('100만원 이하');
+    if (data.hasGoods) hot.unshift('명품');
     hot.push('반값 아파트');
-    if (data.hasGoods) hot.push('명품');
     $('hot').innerHTML = hot.map(function (w) { return '<button data-hot="' + esc(w) + '">#' + esc(w) + '</button>'; }).join('');
 
     var d = data.updatedAt ? new Date(data.updatedAt) : null;
@@ -352,6 +425,15 @@
     var b = e.target.closest('button,[data-go]');
     if (!b) return;
     var ds = b.dataset;
+    if (ds.qa) { answerQuiz(+ds.qa); return; }
+    if (b.id === 'quizNext') { quiz.i++; renderQuiz(); return; }
+    if (b.id === 'quizShare') {
+      var txt = '이 물건 공매에서 얼마에 팔렸을까? 맞혀 봐!\n' + quiz.r.t + ' (감정가 ' + won(quiz.r.appr) + ')';
+      var u = location.origin + location.pathname;
+      if (navigator.share) navigator.share({ title: '얼마에 팔렸을까?', text: txt, url: u }).catch(function () {});
+      else if (navigator.clipboard) navigator.clipboard.writeText(txt + '\n' + u).then(function () { toast('문제를 복사했어요. 카톡에 붙여넣어 보세요.'); });
+      return;
+    }
     if (ds.tab) { st.tab = ds.tab; st.shown = PAGE; render(); }
     else if (ds.cat) { st.cat = ds.cat; st.shown = PAGE; render(); }
     else if (ds.go) { e.preventDefault(); go(ds.go); }
@@ -363,7 +445,8 @@
     } else if (ds.hot) {
       var w = ds.hot;
       if (w === '반값 아파트') { st.q = ''; st.cat = 'home'; st.tab = 'half'; }
-      else if (w === '명품') { st.q = ''; st.cat = 'goods'; st.tab = 'top'; }
+      else if (w === '명품') { st.q = ''; st.cat = 'gL'; st.tab = 'top'; }
+      else if (w === '100만원 이하') { st.q = ''; st.cat = 'all'; st.tab = 'cheapodd'; }
       else { st.q = w; st.tab = 'top'; st.cat = 'all'; }
       $('q').value = st.q; st.shown = PAGE; go(st.tab);
     } else if (ds.csido) {

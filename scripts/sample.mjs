@@ -26,6 +26,7 @@ export function sampleItems() {
     const id = `DEMO-${String(i + 1).padStart(3, '0')}_1`;
     const item = {
       id, t: b.t, sd: b.sd, sgg: b.sgg, emd: b.emd, cat: b.cat, use: b.use,
+      sub: b.cat === 'car' ? 'car' : b.cat === 'goods' ? (/골드|금/.test(b.t) ? 'gold' : 'luxury') : undefined,
       appr: b.appr, min: b.min, rate: Math.round((b.min / b.appr) * 100), fails: b.fails,
       st: at(-24), en: at(b.en), stat: '입찰진행중', thumb: '',
       land: b.land || null, bld: b.bld || null,
