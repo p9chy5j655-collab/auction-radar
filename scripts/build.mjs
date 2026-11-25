@@ -292,7 +292,8 @@ async function fetchRanks() {
 
 // ---------- 입찰결과 (최근 낙찰 사례) ----------
 function pickPrice(r) {
-  const prefer = ['sbidAmt', 'scsbdAmt', 'scsbidAmt', 'sccsBidAmt', 'sbidPrc', 'scsbdPrc', 'bidAmt', 'sbidBidAmt'];
+  // 온비드 입찰결과목록의 낙찰금액은 scfbAmt(문자열로 옴)예요. 숫자·문자 모두 num()이 처리합니다.
+  const prefer = ['scfbAmt', 'sbidAmt', 'scsbdAmt', 'scsbidAmt', 'sccsBidAmt', 'sbidPrc', 'scsbdPrc', 'bidAmt', 'sbidBidAmt'];
   for (const k of prefer) if (num(r[k])) return num(r[k]);
   const forced = process.env.ONBID_RESULT_PRICE_FIELD;
   if (forced && num(r[forced])) return num(r[forced]);
@@ -303,8 +304,19 @@ function pickPrice(r) {
   return null;
 }
 function pickBidders(r) {
+  // 온비드 입찰결과목록의 유효입찰자수(vldBddrNope). 0명도 유효한 값이라 null로만 걸러요.
+  const vld = num(r.vldBddrNope);
+  if (vld !== null) return vld;
   for (const [k, v] of Object.entries(r)) if (/(pcpn|prtc|bidr|nmpr|bidPsn|tndr).*(cnt|nft|num)/i.test(k) && num(v) !== null) return num(v);
   return null;
+}
+// 입찰결과에는 지역 코드가 비어 있어서(lctnSdnm 등 공백) 물건명 앞 주소에서 시도·시군구를 뽑아요.
+function regionFromName(name) {
+  const parts = String(name || '').trim().split(/\s+/);
+  const first = parts[0] || '';
+  const shortSido = /^(서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충북|충남|전북|전남|경북|경남|제주)$/.test(first);
+  if (!shortSido && !/(시|도)$/.test(first)) return { sd: '', sgg: '' };
+  return { sd: SD_SHORT(first), sgg: /(시|군|구)$/.test(parts[1] || '') ? parts[1] : '' };
 }
 function ymdKst(offsetDays) {
   const d = new Date(Date.now() + 9 * 3600e3 + offsetDays * 864e5);
@@ -314,19 +326,23 @@ async function fetchResults() {
   const out = [];
   for (const type of RESULT_TYPES) {
     try {
-      for (let page = 1; page <= 3; page++) {
+      // 입찰결과목록은 최신순이라 3쪽(3,000건)은 하루치뿐이에요. 화면의 "최근 2주" 기준에 맞게 전 페이지를 읽어요(최대 25쪽).
+      for (let page = 1; page <= 25; page++) {
         const { items, total } = await callApi(RESULT_URL, {
           pageNo: page, numOfRows: 1000, resultType: 'json', cltrTypeCd: type, prptDivCd: PROP_CODES,
           opbdDtStart: ymdKst(-14), opbdDtEnd: ymdKst(-1)
         });
         if (page === 1 && items[0]) log(`입찰결과 필드: ${Object.keys(items[0]).join(',')}`);
         for (const r of items) {
+          // 임대(0002) 결과의 scfbAmt는 매각 낙찰가가 아니라 임대료·보증금이라 낙찰 사례로 쓰지 않아요.
+          if (String(r.dspsMthodCd || '') === '0002') continue;
           const price = pickPrice(r);
           const appr = num(r.apslEvlAmt);
           const stat = `${r.pbctStatNm || ''}${r.bidRsltNm || ''}${r.pbctStatCd || ''}`;
           if (!price || !appr || /유찰|취소|0011|0012/.test(stat)) continue;
+          const reg = regionFromName(r.onbidCltrNm || r.cltrNm);
           out.push({
-            t: (r.onbidCltrNm || r.cltrNm || '').trim(), sd: r.lctnSdnm || '', sgg: r.lctnSggnm || '',
+            t: (r.onbidCltrNm || r.cltrNm || '').trim(), sd: reg.sd, sgg: reg.sgg,
             cat: categoryOf(r, type === '0001' ? 're' : 'goods'), appr, price,
             rate: Math.round((price / appr) * 100), bidders: pickBidders(r), dt: parseKst(r.opbdDt || r.opbdDtm || r.cltrOpbdDt || '')
           });
