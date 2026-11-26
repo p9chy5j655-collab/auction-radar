@@ -799,7 +799,7 @@ ${SITE ? `<link rel="canonical" href="${esc(SITE)}/report.html">` : ''}
 <meta property="og:image" content="${SITE ? esc(SITE) + '/og.png' : 'og.png'}">
 <meta name="theme-color" content="#16181D">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=${ASSET_V}">
 </head>
 <body>
 <div class="app">
@@ -922,6 +922,7 @@ function goodsCards(it, kw, place) {
 </section>`;
 }
 
+let ASSET_V = '';
 function itemPage(it, trades, similar, demo, updatedAt) {
   const risks = risksOf(it);
   const G = it.cat === 'goods' || it.cat === 'car';
@@ -959,7 +960,7 @@ ${it.og ? '<meta property="og:image:width" content="1200"><meta property="og:ima
 <link rel="icon" href="../icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="../icon-192.png">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
-<link rel="stylesheet" href="../style.css">
+<link rel="stylesheet" href="../style.css?v=${ASSET_V}">
 </head>
 <body class="item-page">
 <div class="app">
@@ -1134,7 +1135,7 @@ ${similar.length ? `<section class="card-block no-pad-x"><h2 class="pad-x">비�
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script type="application/json" id="item-data">${JSON.stringify({ id: it.id, t: it.t, cat: it.cat, sub: it.sub || '', appr: it.appr, min: it.min, st: it.st, en: it.en, mkt: it.mkt || null, addr: ['goods', 'car'].includes(it.cat) ? '' : (it.addr || [it.sd, it.sgg, it.emd].filter(Boolean).join(' ')), place: placeOf(it), url: it.url }).replace(/</g, '\\u003c')}</script>
-<script src="../item.js" defer></script>
+<script src="../item.js?v=${ASSET_V}" defer></script>
 </body>
 </html>`;
 }
@@ -1247,6 +1248,11 @@ async function main() {
   const updatedAt = new Date().toISOString();
   await fs.rm(DIST, { recursive: true, force: true });
   await copyDir(path.join(ROOT, 'static'), DIST);
+  // 고친 화면이 바로 보이도록: 스타일·스크립트 주소에 빌드 번호를 붙여 브라우저가 옛 파일을 쓰지 않게 해요
+  const V = Date.now().toString(36);
+  const bust = (h) => h.replace(/(href|src)="(\.\.\/)?(style\.css|app\.js|item\.js)"/g, `$1="$2$3?v=${V}"`);
+  for (const f of await fs.readdir(DIST)) if (f.endsWith('.html')) { const fp = path.join(DIST, f); await fs.writeFile(fp, bust(await fs.readFile(fp, 'utf8'))); }
+  ASSET_V = V;
   // 카톡 미리보기 이미지는 절대 주소여야 잘 떠요
   if (SITE) for (const f of ['index.html', 'realestate.html', 'guide.html', 'report.html']) {
     const fp = path.join(DIST, f);
@@ -1327,7 +1333,9 @@ async function main() {
     }));
     log(`첫 화면 데이터 ${homeItems.length}건`);
     // 검색엔진·느린 폰을 위해 첫 화면 목록 30개를 미리 그려 둬요 (스크립트가 돌면 바로 바뀌어요)
-    const pre = slim.filter((x) => (x.cat === 'goods' || x.cat === 'car') && !['right', 'stock'].includes(x.sub) && x.min).slice(0, 20).concat(reSlim.slice(0, 10));
+    const goodOne = (x) => (x.thumb ? 2 : 0) + (x.rate != null && x.rate < 100 ? 1 : 0) + (['luxury', 'gold', 'car', 'elec'].includes(x.sub) ? 2 : 0);
+    const pre = slim.filter((x) => (x.cat === 'goods' || x.cat === 'car') && !['right', 'stock', 'goods_etc', 'machine'].includes(x.sub) && x.min && !x.trap)
+      .sort((a, b) => goodOne(b) - goodOne(a)).slice(0, 20).concat(reSlim.filter((x) => !x.trap).slice(0, 10));
     const preHtml = pre.map((x) => `<a class="pre-item" href="item/${esc(x.id)}.html"><b>${esc(x.t)}</b><span>${won(x.min)}${x.rate && x.rate < 100 ? ` · 감정가의 ${x.rate}%` : ''}</span></a>`).join('');
     for (const f of ['index.html']) {
       const fp = path.join(DIST, f);

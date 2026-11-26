@@ -1,6 +1,6 @@
 // 경매레이더 서비스워커: 화면은 빠르게, 데이터는 항상 최신으로
-const CACHE = 'ar-v1';
-const SHELL = ['./', './index.html', './style.css', './app.js', './item.js', './guide.html', './icon.svg', './manifest.webmanifest'];
+const CACHE = 'ar-v2';
+const SHELL = ['./', './index.html', './guide.html', './icon.svg', './manifest.webmanifest'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', (e) => {
   e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim()));
@@ -10,7 +10,7 @@ self.addEventListener('fetch', (e) => {
   if (req.method !== 'GET' || new URL(req.url).origin !== location.origin) return;
   // 데이터와 물건 페이지는 네트워크 우선, 실패하면 저장본
   e.respondWith(
-    fetch(req).then((res) => {
+    fetch(req, { cache: 'no-cache' }).then((res) => {
       const copy = res.clone();
       if (res.ok) caches.open(CACHE).then((c) => c.put(req, copy));
       return res;
