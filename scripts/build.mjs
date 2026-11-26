@@ -1082,7 +1082,7 @@ async function main() {
   }
 
   if (SITE) {
-    const urls = [`${SITE}/`, `${SITE}/report.html`, `${SITE}/guide.html`, `${SITE}/terms.html`, ...items.map((it) => `${SITE}/item/${it.id}.html`)];
+    const urls = [`${SITE}/`, `${SITE}/realestate.html`, `${SITE}/report.html`, `${SITE}/guide.html`, `${SITE}/terms.html`, `${SITE}/privacy.html`, ...items.map((it) => `${SITE}/item/${it.id}.html`)];
     await fs.writeFile(path.join(DIST, 'sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map((u) => `<url><loc>${esc(u)}</loc></url>`).join('\n')}\n</urlset>\n`);
     await fs.writeFile(path.join(DIST, 'robots.txt'), `User-agent: *\nAllow: /\nSitemap: ${SITE}/sitemap.xml\n`);
   } else {
