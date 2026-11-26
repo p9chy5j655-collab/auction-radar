@@ -625,3 +625,12 @@ body{background:#E7E1D5;font-feature-settings:"tnum" 1}
 .pre-item{display:flex;flex-direction:column;gap:2px;padding:12px 14px;margin:0 16px 8px;background:#fff;border-radius:12px;color:var(--ink);text-decoration:none}
 .pre-item span{font-size:13px;color:var(--muted)}
 .article .steps5{padding-left:0;margin-left:0}
+/* 부동산 화면 첫 부분 (구경 화면과 같은 톤) */
+.re-hero{padding:8px 16px 16px}
+.re-hero h1{margin:12px 0 6px;font-size:28px;line-height:1.22;font-weight:850;letter-spacing:-.045em;word-break:keep-all}
+.re-hero h1 em{font-style:normal;color:#1D4ED8}
+.hot2{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;margin:12px -16px 0;padding:0 16px}
+.hot2::-webkit-scrollbar{display:none}
+.hot2 button{flex:none;height:34px;padding:0 12px;border-radius:999px;background:#fff;border:1px solid var(--line);color:var(--ink);font-size:13.5px;font-weight:600}
+body[data-mode="re"] .stats{margin-top:4px}
+@media (min-width:960px){.re-hero{max-width:760px;padding:24px 32px}.re-hero h1{font-size:40px}}

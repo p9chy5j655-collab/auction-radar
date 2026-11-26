@@ -93,12 +93,23 @@
   function isHalf(it) { return it.rate != null && it.rate <= 50 && !lowball(it); }
   function isCheap(it) { return it.mkt && it.mkt.ratio <= 85 && it.mkt.ratio >= 40 && !lowball(it); }
   function isGd(i) { return i.cat === 'goods' || i.cat === 'car'; }
+  // 검색: 띄어쓰기·대소문자 무시, 흔한 다른 표기도 함께 찾아요
+  var SYN = [['그랜저', '그랜져'], ['아이폰', 'iphone'], ['벤츠', 'benz', 'mercedes'], ['bmw', '비엠더블유', '비엠'], ['롤렉스', 'rolex'], ['샤넬', 'chanel'], ['구찌', 'gucci'], ['루이비통', 'louis', 'vuitton'], ['에르메스', 'hermes'], ['까르띠에', 'cartier'], ['오메가', 'omega'], ['맥북', 'macbook'], ['아이패드', 'ipad'], ['갤럭시', 'galaxy'], ['삼성', 'samsung'], ['애플', 'apple'], ['포르쉐', 'porsche'], ['아우디', 'audi'], ['제네시스', 'genesis'], ['쏘나타', '소나타'], ['스타렉스', '스타랙스'], ['아파트', 'apt'], ['오피스텔', '오피스탤'], ['금', '골드', 'gold'], ['노트북', '랩탑', 'laptop']];
+  function norm(t) { return String(t || '').toLowerCase().replace(/\s+/g, ''); }
+  function qVariants(q) {
+    var n = norm(q), out = [n];
+    SYN.forEach(function (g) { g.forEach(function (w) { if (n.indexOf(norm(w)) !== -1) g.forEach(function (v) { var x = n.replace(norm(w), norm(v)); if (out.indexOf(x) === -1) out.push(x); }); }); });
+    return out;
+  }
+  function hay(it) { return norm(it.t + ' ' + (it.sd || '') + ' ' + (it.sgg || '') + ' ' + (it.emd || '') + ' ' + (it.use || '') + ' ' + (CAT[it.cat] || '') + ' ' + (SUB[it.sub] || '')); }
+  function matchQ(it, vs) { var h = hay(it); for (var i = 0; i < vs.length; i++) if (h.indexOf(vs[i]) !== -1) return true; return false; }
   function isRight(i) { return i.sub === 'right' || i.sub === 'stock'; }
   var RE_CATS = [['home', '아파트·주택'], ['shop', '상가·업무'], ['land', '토지']];
   function score(it) {
     var s = 0;
     if (it.cat === 'home') s += 3; else if (it.cat === 'shop' || isOdd(it)) s += 1.5;
     if (it.thumb) s += 1;
+    if ((it.cat === 'goods' || it.cat === 'car') && it.rate == null) s -= 2;
     if (/서울|경기/.test(it.sd)) s += 2;
     if (it.rate != null && !lowball(it)) s += Math.max(0, (100 - it.rate) / 12);
     if (isCheap(it)) s += Math.max(0, (100 - it.mkt.ratio) / 6);
@@ -179,11 +190,12 @@
     var q = st.q.trim().toLowerCase();
     var source = (st.tab === 'liked' || MODE === 'goods') ? allItems : data.items;
     var hideRights = MODE === 'goods' && st.cat === 'all' && !q && st.tab !== 'liked';
+    var qv = q ? qVariants(q) : null;
     var list = source.filter(function (it) {
       if (hideRights && isRight(it)) return false;
       if (st.cat !== 'all' && grp(it) !== st.cat) return false;
       if (st.sido && shortSido(it.sd) !== st.sido) return false;
-      if (q && (it.t + ' ' + it.sd + ' ' + it.sgg + ' ' + it.emd + ' ' + it.use + ' ' + (CAT[it.cat] || '')).toLowerCase().indexOf(q) === -1) return false;
+      if (qv && !matchQ(it, qv)) return false;
       switch (st.tab) {
         case 'half': return isHalf(it);
         case 'rank': return !!it.rank;
@@ -281,7 +293,7 @@
     var isLiked = !!liked[it.id];
     var region = MODE === 'goods' ? (it.cat === 'car' ? '차량' : catLabel(it)) + (it.sd ? ' · ' + shortSido(it.sd) : '')
       : [shortSido(it.sd), it.sgg, it.emd].filter(Boolean).join(' ') + ' · 유찰 ' + it.fails + '회';
-    var rateTxt = it.rate != null && !lowball(it) ? '<em class="' + (isHalf(it) ? 'hot' : '') + '">감정가의 ' + it.rate + '%</em>' : '';
+    var rateTxt = it.rate != null && !lowball(it) ? '<em class="' + (isHalf(it) ? 'hot' : '') + '">감정가의 ' + it.rate + '%</em>' : it.appr == null ? '<em>감정가 비공개</em>' : '';
     return '<article class="card2">' +
       '<a class="card2-link" href="' + itemUrl(it) + '">' + cover(it, 'card2-ph') +
       '<div class="card2-body"><div class="badges">' + badgesOf(it) + '</div>' +
@@ -293,6 +305,28 @@
       '<button class="heart" data-like="' + esc(it.id) + '" aria-pressed="' + isLiked + '" aria-label="관심 등록">' + HEART + '</button></article>';
   }
 
+  // 목록 파일에 없는 물건까지 찾기: 검색할 때만 전체 색인(search.json)을 받아요
+  var sIndex = null, sLoading = false;
+  function loadIndex() {
+    if (sIndex || sLoading) return; sLoading = true;
+    fetch('data/search.json').then(function (r) { return r.json(); }).then(function (d) { sIndex = d; render(); }).catch(function () { sLoading = false; });
+  }
+  function extraHtml(list) {
+    var q = st.q.trim();
+    if (!q || st.tab === 'liked') return '';
+    if (!sIndex) { loadIndex(); return ''; }
+    var have = {}; allItems.forEach(function (i) { have[i.id] = 1; });
+    var qv = qVariants(q);
+    var more = sIndex.filter(function (r) {
+      if (have[r[0]]) return false;
+      if (MODE === 're' && (r[4] === 'goods' || r[4] === 'car')) return false;
+      return norm(r[1] + ' ' + r[2] + ' ' + r[3]).split('').length && qv.some(function (v) { return norm(r[1] + ' ' + r[2] + ' ' + r[3]).indexOf(v) !== -1; });
+    }).slice(0, 30);
+    if (!more.length) return '';
+    return '<div class="section-head" style="padding-top:12px"><h2 style="font-size:16px">다른 공매 물건 ' + more.length + (more.length === 30 ? '건+' : '건') + '</h2></div>' + more.map(function (r) {
+      return '<a class="pre-item" href="item/' + encodeURIComponent(r[0]) + '.html"><b>' + esc(r[1]) + '</b><span>' + esc([r[2], r[3]].filter(Boolean).join(' ')) + (r[5] != null ? ' · ' + won(r[5]) : '') + (r[6] ? ' · 감정가의 ' + r[6] + '%' : '') + '</span></a>';
+    }).join('');
+  }
   function render() {
     var defs = tabsDef();
     if (!defs.some(function (t) { return t.id === st.tab; })) st.tab = 'top';
@@ -316,8 +350,8 @@
     $('sub').textContent = st.tab === 'cond' && cond ? condText(cond) : cur.sub;
     $('count').textContent = list.length.toLocaleString('ko-KR') + '건';
     var shown = list.slice(0, st.shown);
-    if (shown.length) $('list').innerHTML = shown.map(cardHtml).join('');
-    else $('list').innerHTML = '<div class="empty">' + (st.tab === 'liked' ? '하트를 눌러 관심 물건을 모아보세요.' : '조건에 맞는 물건이 지금은 없어요.<br>검색어나 지역을 바꿔 보세요.') + '</div>';
+    if (shown.length) $('list').innerHTML = shown.map(cardHtml).join('') + extraHtml(list);
+    else $('list').innerHTML = (extraHtml(list) || '<div class="empty">' + (st.tab === 'liked' ? '하트를 눌러 관심 물건을 모아보세요.' : st.q.trim() ? '‘' + esc(st.q.trim()) + '’ 물건은 지금 공매에 없어요.<br>새로 들어오면 매시간 여기 보여드려요.' : '조건에 맞는 물건이 지금은 없어요.<br>종류나 지역을 넓혀 보세요.') + '</div>');
     $('more').hidden = list.length <= st.shown;
     $('more').textContent = '더 보기 (' + (list.length - st.shown).toLocaleString('ko-KR') + '건 남음)';
 
@@ -478,6 +512,13 @@
       sh.list = out; return sh;
     }).filter(function (sh) { return sh.list.length >= 2; });
     pageSeen = { id: seenId, name: seenName };
+    var SHOW = 6;
+    if (shelves.length > SHOW) {
+      $('shelves').innerHTML = shelves.slice(0, SHOW).map(shelfHtml).join('') +
+        '<div id="moreShelves" hidden>' + shelves.slice(SHOW).map(shelfHtml).join('') + '</div>' +
+        '<button class="more" id="moreShelvesBtn" type="button">모음 ' + (shelves.length - SHOW) + '개 더 보기</button>';
+      return;
+    }
     $('shelves').innerHTML = shelves.map(shelfHtml).join('');
   }
   // 낙찰가 맞히기: 최근 실제 낙찰 결과로 4지선다 퀴즈 (기기에만 점수 저장)
@@ -658,7 +699,7 @@
     $('hot').innerHTML = hot.map(function (w) { return '<button data-hot="' + esc(w) + '">#' + esc(w) + '</button>'; }).join('');
 
     var d = data.updatedAt ? new Date(data.updatedAt) : null;
-    $('updated').textContent = (MODE === 'goods' ? '지금 공매 중 ' + (homeStats ? homeStats.total : allItems.length).toLocaleString('ko-KR') + '건' : '온비드 부동산 공매 ' + items.length.toLocaleString('ko-KR') + '건 · 매시간 업데이트') +
+    $('updated').textContent = (MODE === 'goods' ? '지금 공매 중 ' + (homeStats ? homeStats.total : allItems.length).toLocaleString('ko-KR') + '건' : '부동산 공매 ' + items.length.toLocaleString('ko-KR') + '건') +
       (d ? ' · ' + d.toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) + ' 기준' : '');
     $('demo').hidden = !data.demo;
     var ageH = d ? (Date.now() - d.getTime()) / 3600e3 : 0;
@@ -706,6 +747,9 @@
   var condEditing = false, noticeShown = false;
 
   // ---------- 이벤트 ----------
+  document.addEventListener('click', function (e) {
+    if (e.target && e.target.id === 'moreShelvesBtn') { $('moreShelves').hidden = false; e.target.remove(); }
+  });
   var fb = document.getElementById('findBtn');
   if (fb) fb.addEventListener('click', function () { st.q = $('q').value; st.tab = 'top'; st.cat = 'all'; st.shown = PAGE; render(); $('tabs').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
   function go(tab) { st.tab = tab; st.shown = PAGE; render(); $('tabs').scrollIntoView({ behavior: 'smooth', block: 'start' }); }

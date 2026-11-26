@@ -212,17 +212,22 @@ function subOf(r, cat) {
   if (cat === 'car') return /^(중기|선박|항공)/.test(use) || HEAVY.test(m) ? 'heavy' : 'car';
   if (/^(유가증권|NPL|무형자산|회원권)/.test(use) || /비상장|주권|보통주|우선주|출자증권|출자금|주식\s*[\d,]+\s*주|[\d,]+\s*주\b|채권|NPL|특허|상표권|저작권|디자인권|회원권|지분/.test(m)) return 'right';
   if (/재고|원자재|원단|자재|농산물|수산물|축산물|주류|폐기물|고철|잡철|비철|재활용|플라스틱|파지|캔류|PET|EPS|파병|입목|임산물|벌채|생산물|부산물|맥류|암매각/.test(m)) return 'stock';
-  // 장신구는 귀금속으로 (용도 이름에 '시계'가 함께 붙어 있어도 이름이 먼저)
-  if (/귀걸이|목걸이|팔찌|반지|펜던트|진주|브로치|골드바|순금|금괴|\d+\s*[kK]\b|\d+\s*돈/.test(name) && !/시계/.test(name)) return 'gold';
-  if (/시계|롤렉스|까르띠에|에르메스|샤넬|루이비통|구찌|프라다|오메가|명품|핸드백|명품가방/.test(m)) return 'luxury';
-  if (/노트북|휴대폰|아이폰|갤럭시|아이패드|냉장고|세탁기|에어컨|모니터|컴퓨터/.test(m)) return 'elec';
-  if (/가방|보석|다이아(?!몬드\s*테크)/.test(m)) return 'luxury';
-  if (/귀금속/.test(use) || /순금|골드바|금괴|은괴|백금|금반지|금목걸이|금팔찌|\d+\s*돈(?=\s|$|[^가-힣])/.test(m)) return 'gold';
-  if (/팔찌|목걸이|반지|귀걸이/.test(m)) return 'gold';
-  if (/^(중기|선박|항공)/.test(use) || HEAVY.test(m)) return 'heavy';
-  if (/^(컴퓨터|전기|통신|가전)/.test(use) || /노트북|컴퓨터|모니터|휴대폰|아이폰|갤럭시|아이패드|TV|카메라|가전|냉장고|세탁기|에어컨/.test(m)) return 'elec';
-  if (/^(기계|측정|실험|의료|산업|공구)/.test(use) || /기계|설비|장비|멸균기|공작|공구/.test(m)) return 'machine';
-  if (/가구|생활|사무|집기|비품|의류|잡화|주방|악기|자판기/.test(m)) return 'living';
+  // ① 물건 이름으로 먼저 판단 (용도 칸은 '시계/귀금속'처럼 넓게 묶여 있어 마지막에 봐요)
+  const ELEC = /노트북|휴대폰|핸드폰|아이폰|갤럭시|아이패드|맥북|iMac|MacBook|태블릿|모니터|컴퓨터|PC|TV|카메라|냉장고|세탁기|에어컨|음수기|정수기|청소기|에어팟|스피커/i;
+  if (/귀걸이|목걸이|팔찌|반지|펜던트|진주|브로치|골드바|순금|금괴|은괴|백금|\d+\s*[kK]\b|\d+\s*돈(?=\s|$|[^가-힣])/.test(name) && !/시계/.test(name)) return 'gold';
+  if (/시계|롤렉스|까르띠에|에르메스|샤넬|루이비통|구찌|프라다|오메가|명품|핸드백|가방|지갑|위블로|불가리|티파니|버버리|페라가모|디올|발렌시아가|보테가/i.test(name)) return 'luxury';
+  if (HEAVY.test(name)) return 'heavy';
+  if (/머시닝|선반기|밀링|프레스|사출기|CNC|공작기계|컴프레서|발전기|보일러|컨베이어|포장기|성형기|멸균기|분석기|측정기|의료기기|장비|기계/.test(name)) return 'machine';
+  if (/집기|사무용품|책상|의자|파티션|캐비닛|소파|침대|가구|진열대|테이블|스툴|조명|식기|주방|의류|잡화|악기|자판기/.test(name) && !/노트북|맥북|아이패드|휴대폰|아이폰|갤럭시/.test(name)) return 'living';
+  if (ELEC.test(name)) return 'elec';
+  if (/보석|다이아(?!몬드\s*테크)/.test(name)) return 'luxury';
+  // ② 이름으로 모르면 용도 칸으로
+  if (/^(중기|선박|항공)/.test(use)) return 'heavy';
+  if (/귀금속/.test(use)) return 'gold';
+  if (/시계|보석|명품/.test(use)) return 'luxury';
+  if (/^(컴퓨터|전기|통신|가전)/.test(use)) return 'elec';
+  if (/^(기계|측정|실험|의료|산업|공구)/.test(use) || /설비|공구/.test(m)) return 'machine';
+  if (/가구|생활|사무|집기|비품|의류|잡화|주방|악기/.test(m)) return 'living';
   return 'goods_etc';
 }
 
@@ -1326,6 +1331,9 @@ async function main() {
       await fs.writeFile(fp, h.replace('<div class="list" id="list"></div>', `<div class="list" id="list">${preHtml}</div>`));
     }
   }
+  // 검색 색인: 상세 페이지가 있는 모든 물건 (id, 이름, 시도, 시군구, 종류, 최저가, 감정가 대비%)
+  await fs.writeFile(path.join(DIST, 'data', 'search.json'), JSON.stringify(items.filter((it) => !['right', 'stock'].includes(it.sub) || true)
+    .map((it) => [it.id, it.t, SD_SHORT(it.sd), it.sgg || '', it.cat, it.min ?? null, it.rate && it.rate < 100 && !it.trap ? it.rate : 0])));
   await fs.writeFile(path.join(DIST, 'report.html'), reportPage(items, recentResults, demo, updatedAt));
 
   for (const it of items) {

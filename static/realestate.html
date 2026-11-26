@@ -9,7 +9,7 @@
 <meta property="og:description" content="경매 몰라도 괜찮아요. 오늘 싸게 나온 공매만 골라 드려요. 반값 물건, 이색 물건, 낙찰 도우미까지.">
 <meta property="og:image" content="og.png">
 <meta property="og:type" content="website">
-<meta name="theme-color" content="#16181D">
+<meta name="theme-color" content="#F3EFE7">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -18,31 +18,33 @@
 </head>
 <body data-mode="re">
 <div class="app" id="app">
-<header class="hero">
-<div class="hero-top">
-<a class="logo" href="index.html"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><path d="M12 12l6-6"/></svg>경매레이더</a>
-<div style="display:flex;gap:8px">
-<button class="dark-btn" id="likedBtn" aria-label="관심 물건 보기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg><span class="count-dot" id="likedCount" hidden>0</span></button>
-<a class="dark-btn" href="#alert" aria-label="맞춤 조건 설정으로 이동"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></a>
-</div>
-</div>
-<div>
-<h1>집·땅 공매,<br>반값부터 시세 비교까지.</h1>
-<p id="updated">불러오는 중…</p>
-</div>
-<div class="search">
-<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
-<input id="q" type="search" aria-label="물건 검색" placeholder="지역, 아파트 이름, 동네 검색" autocomplete="off" enterkeyhint="search">
-<button class="clear-btn" id="clearQ" aria-label="검색어 지우기" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
-</div>
-<div class="hot" id="hot" aria-label="많이 찾는 지역"></div>
-<div class="install" id="install" hidden>
-<span id="installText">홈 화면에 추가하면 앱처럼 바로 열 수 있어요.</span>
-<button id="installBtn">추가하기</button>
-</div>
+<header class="topbar2">
+<a class="logo2" href="index.html"><span class="mark"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.5"/><path d="M12 12l5.5-5.5"/></svg></span>경매레이더</a>
+<nav class="nav-d" aria-label="주요 메뉴"><a href="index.html">구경하기</a><a class="on" href="realestate.html">부동산</a><a href="report.html">이번 주 리포트</a><a href="guide.html">공매가 처음이라면</a></nav>
+<span class="sp"></span>
+<a class="ibtn" href="#alert" aria-label="맞춤 조건 설정"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4"/></svg></a>
+<button class="ibtn" id="likedBtn" aria-label="관심 물건 보기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg><span class="count-dot" id="likedCount" hidden>0</span></button>
 </header>
+<section class="re-hero">
+<span class="live"><span class="dot"></span><span id="updated">공매 물건을 모으는 중이에요…</span></span>
+<h1>집·땅·상가 공매,<br><em>시세와 비교</em>해서 봐요</h1>
+<p class="lede">감정가보다 얼마나 내려왔는지, 같은 단지 실거래가와 비교하면 어떤지, 얼마까지 쓰면 되는지 한 화면에서 따져 봐요.</p>
+<div class="search search2" role="search">
+<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+<label class="sr-only" for="q">물건 검색</label>
+<input id="q" type="search" placeholder="지역, 아파트 이름, 동네 검색" autocomplete="off" enterkeyhint="search">
+<button class="clear-btn" id="clearQ" aria-label="검색어 지우기" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+<button class="find-btn" id="findBtn" type="button">찾기</button>
+</div>
+<div class="hot hot2" id="hot" aria-label="많이 찾는 지역"></div>
+<p class="src"><b>출처: 온비드</b>(한국자산관리공사) · 국토교통부 실거래가</p>
+</section>
+<div class="install light" id="install" hidden>
+<span id="installText">홈 화면에 두면 앱처럼 바로 열려요.</span>
+<button id="installBtn">홈 화면에 추가하기</button>
+</div>
 
-<div id="demo" class="demo-bar" hidden>지금 보이는 물건은 예시 데이터예요. 인증키를 넣고 배포하면 실제 공매 물건으로 바뀌어요.</div>
+<div id="demo" class="demo-bar" hidden>지금은 예시 물건을 보여주고 있어요. 실제 공매 물건이 아니에요.</div>
 <div id="condNotice" class="notice" hidden></div>
 <div id="stale" class="demo-bar" hidden></div>
 
@@ -58,7 +60,7 @@
 
 <div id="shelves"></div>
 
-<section id="resultsWrap" hidden>
+<section id="resultsWrap" class="band" hidden>
 <div class="section-head"><h2>최근 이렇게 낙찰됐어요</h2><span class="muted small">감정가 → 낙찰가</span></div>
 <div class="list" id="results"></div>
 </section>
@@ -72,7 +74,7 @@
 
 <section class="block" id="alert">
 <h2>나에게 맞는 물건 찾기</h2>
-<p class="muted small">세 가지만 고르면 맞춤 물건을 먼저 보여드려요. 다음에 들어오면 조건에 맞는 새 물건도 알려드려요. 답은 이 기기에만 저장되고 서버로 보내지 않아요.</p>
+<p class="muted small">세 가지만 고르면 맞춤 물건을 먼저 보여드려요. 다시 들어오면 조건에 맞는 새 물건이 몇 건인지 맨 위에 보여드려요. 답은 이 기기에만 저장되고 서버로 보내지 않아요.</p>
 <div id="condForm">
 <div class="label" style="margin-bottom:8px">1. 어떤 목적으로 보세요?</div>
 <div class="chips" id="condPurpose"></div>
@@ -131,7 +133,7 @@
 <a href="index.html"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>구경</a>
 <a href="realestate.html" class="on"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>부동산</a>
 <a href="index.html?tab=liked"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg>관심</a>
-<a href="#alert"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>맞춤</a>
+<a href="#alert"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4"/></svg>맞춤</a>
 <a href="guide.html"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h12v18H6a2 2 0 0 1-2-2z"/><path d="M8 7h6M8 11h6"/></svg>가이드</a>
 </nav>
 </div>
