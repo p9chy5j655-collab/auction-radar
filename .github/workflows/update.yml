@@ -8,7 +8,7 @@ on:
     branches: [main]
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: deploy
@@ -70,13 +70,15 @@ jobs:
           NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
         run: node scripts/build.mjs
 
-      - name: 점검용 사이트 사본 보관 (1일)
-        uses: actions/upload-artifact@v4
-        with:
-          name: site
-          path: dist
-          retention-days: 1
-          if-no-files-found: ignore
+      - name: 점검용 사본 (커밋 메시지에 [snapshot]이 있을 때만 snapshot 브랜치에 올림)
+        if: github.event_name == 'push' && contains(github.event.head_commit.message, '[snapshot]')
+        run: |
+          cd dist
+          git init -q -b snapshot
+          git config user.name "github-actions"; git config user.email "actions@github.com"
+          git add -A && git commit -q -m "snapshot ${GITHUB_SHA}"
+          git push -q -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${GITHUB_REPOSITORY}.git" snapshot
+          rm -rf .git
 
       - name: Cloudflare Pages 프로젝트 준비 (처음 한 번만 만들어져요)
         uses: cloudflare/wrangler-action@v3
