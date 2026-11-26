@@ -11,7 +11,10 @@ const DIST = path.join(ROOT, 'dist');
 const CACHE = path.join(ROOT, '.cache');
 
 const KEY = (process.env.DATA_GO_KR_KEY || '').trim();
-const SITE = (process.env.SITE_URL || '').replace(/\/$/, '');
+// 사이트 주소(정본 URL). 커스텀 도메인(gongmae24.com)을 쓰고, 배포 전 임시 주소(*.pages.dev)는 정본으로 쓰지 않아요.
+// SITE_URL 환경변수가 다른 도메인이면 그 값을 그대로 씁니다.
+const RAW_SITE = (process.env.SITE_URL || '').trim().replace(/\/$/, '');
+const SITE = RAW_SITE && !RAW_SITE.includes('.pages.dev') ? RAW_SITE : 'https://gongmae24.com';
 // 공공데이터포털 '활용명세'에서 확인한 요청주소예요. 바뀌면 GitHub Variables로 덮어쓸 수 있어요.
 // 해당 API를 활용신청하지 않았으면 그 부분만 건너뛰고 나머지는 정상으로 만들어져요.
 const B = 'https://apis.data.go.kr/B010003';

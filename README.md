@@ -43,7 +43,7 @@
      - `CLOUDFLARE_ACCOUNT_ID`: 2단계 계정 ID
      - `NAVER_CLIENT_ID`, `NAVER_CLIENT_SECRET`: (선택) 네이버 검색 API
    - **Variables** 탭에 추가
-     - `SITE_URL`: 사이트 주소 (예: `https://auction-radar.pages.dev`, 도메인을 연결하면 그 주소)
+     - `SITE_URL`: (선택) 사이트 주소. 지정하지 않으면 `https://gongmae24.com`을 쓰고, `*.pages.dev` 임시 주소는 정본으로 쓰지 않습니다.
      - `CF_PROJECT`: Pages 프로젝트 이름이 `auction-radar`가 아니면 그 이름
      - `ONBID_GOODS_URL`, `ONBID_CAR_URL`: (선택) 동산·차량 API 요청주소
      - `ONBID_RANK_URL`: (추천) 관심물건순위 API 요청주소
