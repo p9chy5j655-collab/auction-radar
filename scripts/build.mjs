@@ -123,6 +123,18 @@ function num(v) {
   return Number.isFinite(n) && String(v).replace(/[^\d]/g, '') !== '' ? n : null;
 }
 
+// 빈 값·'-'·'없음'은 빼요
+function clean(o) {
+  const out = {};
+  for (const [k, v] of Object.entries(o)) {
+    if (v == null) continue;
+    const t = typeof v === 'number' ? v : String(v).trim();
+    if (t === '' || t === 0 || /^(-|없음|미상|해당없음|N\/A|null)$/i.test(String(t))) continue;
+    out[k] = t;
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
 // ---------- 온비드 정규화 ----------
 function categoryOf(r, kind) {
   if (kind === 'goods') return 'goods';
@@ -152,6 +164,13 @@ function friendlyTitle(r, cat, land, bld) {
     const m = t.match(/^(.*?)\s*(압수물|몰수품|압류물)$/);
     const out = m && m[1] ? `${m[1]} (${m[2]})` : t;
     return out.length >= 2 ? out : orig;
+  }
+  if (cat === 'car' && (r.carMdlNm || r.carVhknNm)) {
+    // 공고의 차종·모델·연식 칸을 그대로 써요 (가장 정확)
+    const model = String(r.carMdlNm || r.carVhknNm).replace(/\s+/g, ' ').trim();
+    const mk = String(r.cltrMkrNm || '').trim();
+    const y = (String(r.yrmdl || '').match(/(19|20)\d{2}/) || [])[0];
+    return [mk && !model.includes(mk) && !/^(기타|없음)$/.test(mk) ? mk : '', model, y ? `${y}년식` : ''].filter(Boolean).join(' ');
   }
   if (cat === 'car') {
     // 보관 장소 주소, 차량번호, 차대번호는 빼고 차종·연식만 남겨요
@@ -238,7 +257,13 @@ function normalize(r, kind) {
     alc: r.alcYn === 'Y',
     mod: parseKst(r.mdfcnDt),
     pnu: String(r.ltnoPnu || r.rdnmPnu || ''),
-    url: `https://www.onbid.co.kr/op/cltrpbancinf/cltrdtl/CltrDtlController/mvmnCltrDtl.do?${q}`
+    url: `https://www.onbid.co.kr/op/cltrpbancinf/cltrdtl/CltrDtlController/mvmnCltrDtl.do?${q}`,
+    // 동산·차량 목록에 함께 오는 제품 정보 (없으면 빈 값). 차량번호는 개인정보 보호를 위해 쓰지 않아요.
+    spec: kind === 're' ? undefined : clean({
+      maker: r.cltrMkrNm, model: kind === 'car' ? (r.carMdlNm || r.carVhknNm) : r.mdlNm, kind: r.carVhknNm, year: kind === 'car' ? r.yrmdl : r.mnftYr,
+      km: num(r.drvDstc), cc: num(r.dsvlm), fuel: r.fuelCont, color: r.carColrNm, qty: r.qntyCont, size: r.mvastSizeCont, weight: r.cltrWt,
+      place: r.cltrCstdPlcNm, author: r.autrNm, product: r.cltrPrdctNm || r.mvastCmdtyNm, origin: r.prdlcPlorCont
+    })
   };
 }
 
@@ -478,6 +503,18 @@ function regionRates(results) {
 const GENERIC = /^(노트북|컴퓨터|모니터|휴대폰|핸드폰|시계|가방|의류|신발|가구|기계|기계류|설비|공구|사무용품|사무기기|집기|비품|물품|재고|재고품|귀금속|주류|원단|자재|부품|전자제품|가전|가전제품|기타)$/;
 function keywordOf(it) {
   let t = it.t;
+  const sp = it.spec || {};
+  if (it.cat === 'car' && sp.model) {
+    const y = String(sp.year || '').match(/(19|20)\d{2}/)?.[0] || ((t.match(/(19|20)\d{2}(?=년식)/) || [])[0] || '');
+    const model = [sp.maker && !String(sp.model).includes(sp.maker) ? sp.maker : '', sp.model].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+    return { kw: [model, y].filter(Boolean).join(' ').slice(0, 30), model, year: y, generic: model.length < 2 };
+  }
+  // 공고에 모델명이 따로 있으면 그게 가장 정확해요
+  const mdl = String(sp.model || '').trim();
+  if (it.cat === 'goods' && mdl && /[A-Za-z0-9]{3,}/.test(mdl) && !/^(없음|미상|기타)$/.test(mdl)) {
+    const code = (mdl.match(/[A-Za-z0-9][A-Za-z0-9\-]{3,}/) || [mdl])[0];
+    return { kw: [sp.maker, code].filter(Boolean).join(' ').slice(0, 30), model: [sp.maker, mdl].filter(Boolean).join(' '), code, year: String(sp.year || ''), generic: false, fromSpec: true };
+  }
   if (it.cat === 'car') {
     const y = (t.match(/(19|20)\d{2}(?=년식)/) || [])[0] || '';
     const model = t.replace(/(19|20)\d{2}년식/, ' ').replace(/승용|승합|화물|대형차|중형차|소형차|경차|자동차/g, ' ').replace(/\s+/g, ' ').trim();
@@ -599,7 +636,7 @@ async function attachPhotos(list) {
       if (urls.length) { it.photos = urls; found++; }
     } catch (e) {
       if (!firstErr) firstErr = `${k}: ${e.message}`;
-      if (/404|SERVICE_KEY|SERVICE ACCESS|등록되지 않은|not found|30|20/i.test(e.message)) dead[k] = true;
+      if (/API 오류 4\d\d|SERVICE_KEY|SERVICE ACCESS|등록되지 않은|not found|\s(20|22|30|31|32|33)\s/i.test(e.message)) dead[k] = true;
     }
     await sleep(60);
   }
@@ -850,14 +887,17 @@ function goodsGuide(it, kw) {
 // 동산·차량 전용 카드: 물건 카드, 받아 오는 방법, 꼭 확인할 것
 function goodsCards(it, kw, place) {
   const isCar = it.cat === 'car';
-  const facts = isCar
-    ? [['차종', kw.model], ['연식', kw.year ? `${kw.year}년식` : '공고문 확인'], ['보관 장소', place || '공고문 확인']]
-    : [['종류', catName(it)], ['제품번호', kw.code || '공고에 없음 (원문 사진에서 확인)'], ['보관 장소', place || '공고문 확인']];
+  const sp = it.spec || {};
+  const n = (v) => Number(v).toLocaleString('ko-KR');
+  const facts = (isCar
+    ? [['차종', kw.model], ['연식', kw.year ? `${kw.year}년식` : '공고문 확인'], ['주행거리', sp.km ? `${n(sp.km)}km` : ''], ['연료', sp.fuel], ['배기량', sp.cc ? `${n(sp.cc)}cc` : ''], ['색상', sp.color], ['보관 장소', sp.place || place || '공고문 확인']]
+    : [['종류', catName(it)], ['제조사', sp.maker], ['모델명·제품번호', kw.code || sp.model || '공고에 없음 (원문 사진에서 확인)'], ['제조 연도', sp.year], ['수량', sp.qty], ['크기', sp.size], ['무게', sp.weight], ['작가', sp.author], ['원산지', sp.origin], ['보관 장소', sp.place || place || '공고문 확인']])
+    .filter((f) => f[1]);
   const auth = { luxury: '명품', gold: '귀금속', elec: '전자제품' }[it.sub];
   return `<section class="card-block">
 <h2>${isCar ? '차량 카드' : '물건 카드'}</h2>
 <dl class="info">${facts.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>
-<p class="note">공고 제목에서 뽑은 정보예요. 상태·구성품·${isCar ? '주행거리' : '보증서'}는 온비드 원문의 사진과 상세 설명에서 확인하세요.</p>
+<p class="note">${Object.keys(sp).length ? '온비드 공고에 적힌 정보예요.' : '공고 제목에서 뽑은 정보예요.'} 상태·구성품·${isCar ? '주행거리' : '보증서'}는 온비드 원문의 사진과 상세 설명에서 확인하세요.</p>
 </section>
 <section class="card-block">
 <h2>${isCar ? '사기 전에 꼭 확인' : '어떻게 받아 와요?'}</h2>
@@ -1229,7 +1269,7 @@ async function main() {
     }
   }
   const slim = listed.map((it) => {
-    const { pnu, evc, how, org, req, land, bld, url, prop, alc, key, addr, mod, stat, src, _thumbFile, _gallery, gallery, photos, ...rest } = it;
+    const { pnu, evc, how, org, req, land, bld, url, prop, alc, key, addr, mod, stat, src, _thumbFile, _gallery, gallery, photos, spec, ...rest } = it;
     return { ...rest, risk: risksOf(it).filter(([h]) => h !== '시세 비교 없음' && !h.startsWith('명도')).length };
   });
   const gRes = results.filter((r) => (r.cat === 'goods' || r.cat === 'car') && r.t).slice(0, 20);
