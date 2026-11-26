@@ -357,7 +357,7 @@
   // 첫 화면: 회전 낱말 + 진열장(실제 물건) + 사실 띠
   var rotTimer = null;
   function heroPool() {
-    return allItems.filter(function (i) { return i.min != null && !i.trap && !lowball(i) && !i.risk && !notStarted(i) && hoursLeft(i) > 6 && ['right', 'stock', 'goods_etc'].indexOf(i.sub) === -1 && !/차종 미상/.test(i.t); });
+    return allItems.filter(function (i) { return i.min != null && (i.rate != null || i.thumb) && !i.trap && !lowball(i) && !i.risk && !notStarted(i) && hoursLeft(i) > 6 && ['right', 'stock', 'goods_etc'].indexOf(i.sub) === -1 && !/차종 미상/.test(i.t); });
   }
   function lotHtml(it) {
     var tag = it.rate == null ? '감정가 비공개' : it.rate >= 100 ? '감정가 그대로' : '감정가의 ' + it.rate + '%';

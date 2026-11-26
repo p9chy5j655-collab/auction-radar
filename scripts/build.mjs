@@ -182,6 +182,7 @@ function subOf(r, cat) {
   const HEAVY = /굴삭기|굴착기|포크레인|크레인|지게차|선박|보트|요트|트랙터|콤바인|이앙기|구보타|덤프|로더|불도저/;
   if (cat === 'car') return /^(중기|선박|항공)/.test(use) || HEAVY.test(m) ? 'heavy' : 'car';
   if (/^(유가증권|NPL|무형자산|회원권)/.test(use) || /비상장|주권|보통주|우선주|출자증권|출자금|주식\s*[\d,]+\s*주|[\d,]+\s*주\b|채권|NPL|특허|상표권|저작권|디자인권|회원권|지분/.test(m)) return 'right';
+  if (/재고|원자재|원단|자재|농산물|수산물|축산물|주류|폐기물|고철|잡철|비철|재활용|플라스틱|파지|캔류|PET|EPS|파병|입목|임산물|벌채|생산물|부산물|맥류|암매각/.test(m)) return 'stock';
   if (/시계|롤렉스|까르띠에|에르메스|샤넬|루이비통|구찌|프라다|오메가|명품|핸드백|명품가방/.test(m)) return 'luxury';
   if (/노트북|휴대폰|아이폰|갤럭시|아이패드|냉장고|세탁기|에어컨|모니터|컴퓨터/.test(m)) return 'elec';
   if (/가방|보석|다이아(?!몬드\s*테크)/.test(m)) return 'luxury';
@@ -191,7 +192,6 @@ function subOf(r, cat) {
   if (/^(컴퓨터|전기|통신|가전)/.test(use) || /노트북|컴퓨터|모니터|휴대폰|아이폰|갤럭시|아이패드|TV|카메라|가전|냉장고|세탁기|에어컨/.test(m)) return 'elec';
   if (/^(기계|측정|실험|의료|산업|공구)/.test(use) || /기계|설비|장비|멸균기|공작|공구/.test(m)) return 'machine';
   if (/가구|생활|사무|집기|비품|의류|잡화|주방|악기|자판기/.test(m)) return 'living';
-  if (/재고|원자재|원단|자재|농산물|수산물|축산물|주류|폐기물|고철/.test(m)) return 'stock';
   return 'goods_etc';
 }
 
