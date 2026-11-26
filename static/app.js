@@ -256,7 +256,7 @@
   function cover(it, cls) {
     var a = artKey(it);
     return '<div class="' + cls + ' cv art" style="background:' + TINT[a] + '">' + ART[a] +
-      (it.thumb ? '<img src="' + esc(it.thumb) + '" alt="" loading="lazy" onerror="this.remove()">' : '') + '</div>';
+      (it.thumb ? (/pick2|deal|ph/.test(cls) ? '<img class="bgimg" src="' + esc(it.thumb) + '" alt="" aria-hidden="true" loading="lazy">' : '') + '<img class="fgimg" src="' + esc(it.thumb) + '" alt="" loading="lazy" onerror="this.parentNode.querySelectorAll(\'img\').forEach(function(x){x.remove()})">' : '') + '</div>';
   }
   function coverOld(it, cls) {
     var k = iconKey(it);
@@ -466,6 +466,18 @@
     }
     return all;
   }
+  function kday(iso) {
+    if (!iso) return '';
+    var d = new Date(iso); if (isNaN(d)) return '';
+    return (d.getMonth() + 1) + '월 ' + d.getDate() + '일(' + '일월화수목금토'.charAt(d.getDay()) + ')';
+  }
+  function quizKind(r) {
+    var t = (r.t || '') + ' ' + (r.use || '');
+    if (r.cat === 'car') return '차량';
+    if (r.cat === 'goods') return /금|반지|목걸이|팔찌|귀금속/.test(t) ? '귀금속' : /시계|가방|명품/.test(t) ? '명품' : '동산';
+    if (/아파트/.test(t)) return '아파트';
+    return CAT[r.cat] || '부동산';
+  }
   function renderQuiz() {
     var pool = quizPool();
     if (!pool.length) { $('quiz').hidden = true; return; }
@@ -474,19 +486,32 @@
     var r = pool[(day + quiz.i) % pool.length];
     var sc = store.get('ar_quiz', { right: 0, total: 0, streak: 0 });
     $('quizScore').textContent = sc.total ? '맞힌 문제 ' + sc.right + '/' + sc.total + (sc.streak > 1 ? ' · ' + sc.streak + '연속' : '') : '';
-    // 정답(실제 낙찰가율)과 그럴듯한 오답 3개
-    var rates = [r.rate], cands = [r.rate - 25, r.rate - 12, r.rate + 12, r.rate + 25, r.rate + 40, r.rate - 35];
+    // 정답(실제 낙찰가율)과 그럴듯한 오답 3개. 최저 입찰가보다 낮은 보기는 만들지 않아요(그 값으로는 낙찰될 수 없으니까요)
+    var minRate = r.min && r.appr ? Math.ceil(r.min / r.appr * 100) : 0;
+    var rates = [r.rate], cands = [r.rate - 25, r.rate - 12, r.rate + 12, r.rate + 25, r.rate + 40, r.rate - 35, r.rate + 55];
     var seed = (day + quiz.i) % 5;
-    for (var k = 0; rates.length < 4 && k < cands.length; k++) {
+    for (var k = 0; rates.length < 4 && k < cands.length * 2; k++) {
       var c = Math.round(cands[(k + seed) % cands.length]);
-      if (c >= 10 && rates.every(function (x) { return Math.abs(x - c) >= 8; })) rates.push(c);
+      if (c >= 10 && c >= minRate && rates.every(function (x) { return Math.abs(x - c) >= 8; })) rates.push(c);
     }
     var opts = rates.map(function (x) { return { rate: x, price: x === r.rate ? r.price : Math.round(r.appr * x / 100 / 1e5) * 1e5, ok: x === r.rate }; })
       .sort(function (a, b) { return a.price - b.price; });
     quiz.opts = opts; quiz.r = r; quiz.answered = false;
-    $('quizBody').innerHTML = '<div class="quiz-q"><span class="badge">' + esc(CAT[r.cat] || '공매') + '</span><b>' + esc(r.t) + '</b>' +
-      '<span class="muted small">' + esc([shortSido(r.sd), r.sgg].filter(Boolean).join(' ')) + ' · 감정가 <b>' + won(r.appr) + '</b></span></div>' +
-      '<div class="quiz-opts">' + opts.map(function (o, i) { return '<button class="quiz-opt" data-qa="' + i + '">' + won(o.price) + '</button>'; }).join('') + '</div>' +
+    var region = [shortSido(r.sd), r.sgg].filter(Boolean).join(' ');
+    var what = [r.use, r.area ? (Math.round(r.area * 10) / 10) + '㎡' + (r.area >= 10 && /home|shop/.test(r.cat) ? ' (약 ' + Math.round(r.area / 3.3058) + '평)' : '') : ''].filter(Boolean).join(' · ');
+    var facts = [
+      kday(r.dt) ? ['언제', kday(r.dt) + ' 개찰'] : null,
+      region ? ['어디', region] : null,
+      what ? ['무엇', what] : null,
+      ['감정가', won(r.appr) + '원'],
+      r.fails != null ? ['유찰', r.fails ? r.fails + '번 안 팔린 뒤 나온 회차' : '처음 나온 회차'] : null,
+      r.min ? ['그 회차 최저 입찰가', won(r.min) + '원 (감정가의 ' + minRate + '%)'] : null
+    ].filter(Boolean);
+    $('quizBody').innerHTML = '<p class="quiz-lead">온비드에서 실제로 끝난 입찰이에요. 아래 정보를 보고 낙찰가를 맞혀 보세요.</p>' +
+      '<div class="quiz-q"><div class="badges"><span class="badge">' + esc(quizKind(r)) + '</span>' + (r.prop ? '<span class="badge">' + esc(r.prop) + '</span>' : '') + '</div><b>' + esc(r.t) + '</b></div>' +
+      '<dl class="quiz-facts">' + facts.map(function (f) { return '<div><dt>' + esc(f[0]) + '</dt><dd>' + esc(f[1]) + '</dd></div>'; }).join('') + '</dl>' +
+      (r.min ? '<p class="quiz-hint">힌트: 최저 입찰가보다 낮게는 낙찰될 수 없어요. 여러 명이 경쟁하면 더 올라가요.</p>' : '') +
+      '<div class="quiz-opts">' + opts.map(function (o, i) { return '<button class="quiz-opt" data-qa="' + i + '">' + won(o.price) + '원</button>'; }).join('') + '</div>' +
       '<div class="quiz-result" id="quizResult"></div>';
   }
   function answerQuiz(i) {
@@ -500,9 +525,14 @@
       b.disabled = true;
       if (quiz.opts[k].ok) b.classList.add('ok'); else if (k === i) b.classList.add('no');
     });
-    $('quizResult').innerHTML = '<p><b>' + (o.ok ? '정답이에요! ' : '아쉬워요. ') + '</b>실제로는 <b>' + won(r.price) + '</b>, 감정가의 <b>' + r.rate + '%</b>에 팔렸어요' +
-      (r.bidders ? ' (' + r.bidders + '명 경쟁)' : '') + '. ' + (r.rate > 100 ? '감정가보다 비싸게 팔렸어요. 인기 물건은 경쟁이 붙으면 이렇게 돼요.' : r.rate < 70 ? '여러 번 유찰돼 값이 많이 내려간 뒤 팔린 경우가 많아요.' : '') + '</p>' +
-      '<div class="quiz-next"><button class="btn-outline" id="quizNext" type="button">다음 문제</button><button class="btn-outline" id="quizShare" type="button">친구에게 내기</button></div>';
+    var why = [];
+    if (r.min && r.price > r.min) why.push('최저 입찰가보다 ' + won(r.price - r.min) + '원 높게 써서 낙찰됐어요');
+    else if (r.min && r.price <= r.min * 1.01) why.push('최저 입찰가 거의 그대로 낙찰됐어요');
+    if (r.bidders != null) why.push(r.bidders <= 1 ? '혼자 입찰해서 경쟁이 없었어요' : r.bidders + '명이 입찰했어요');
+    if (r.rate > 100) why.push('경쟁이 붙어 감정가보다 높게 팔렸어요');
+    $('quizResult').innerHTML = '<p><b>' + (o.ok ? '정답이에요. ' : '아까워요. ') + '</b>실제 낙찰가는 <b>' + won(r.price) + '원</b>, 감정가의 <b>' + r.rate + '%</b>예요.' +
+      (why.length ? '<br>' + esc(why.join('. ')) + '.' : '') + '</p>' +
+      '<div class="quiz-next"><button class="btn-outline" id="quizNext" type="button">다음 문제</button><button class="btn-outline" id="quizShare" type="button">카톡으로 문제 내기</button></div>';
     $('quizScore').textContent = '맞힌 문제 ' + sc.right + '/' + sc.total + (sc.streak > 1 ? ' · ' + sc.streak + '연속' : '');
   }
 

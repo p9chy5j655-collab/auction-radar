@@ -46,6 +46,14 @@ jobs:
           restore-keys: |
             thumbs-
 
+      - name: 큰 사진 주소 캐시 (물건마다 한 번만 상세 조회)
+        uses: actions/cache@v4
+        with:
+          path: .cache/detail
+          key: detail-${{ github.run_id }}
+          restore-keys: |
+            detail-
+
       - name: 사이트 만들기
         env:
           DATA_GO_KR_KEY: ${{ secrets.DATA_GO_KR_KEY }}
@@ -55,6 +63,9 @@ jobs:
           ONBID_RANK_URL: ${{ vars.ONBID_RANK_URL }}
           ONBID_RESULT_URL: ${{ vars.ONBID_RESULT_URL }}
           ONBID_RESULT_PRICE_FIELD: ${{ vars.ONBID_RESULT_PRICE_FIELD }}
+          ONBID_RLST_DTL_URL: ${{ vars.ONBID_RLST_DTL_URL }}
+          ONBID_GOODS_DTL_URL: ${{ vars.ONBID_GOODS_DTL_URL }}
+          ONBID_CAR_DTL_URL: ${{ vars.ONBID_CAR_DTL_URL }}
           NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
           NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
         run: node scripts/build.mjs

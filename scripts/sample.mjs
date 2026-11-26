@@ -50,11 +50,11 @@ export function sampleItems() {
 export function sampleResults() {
   const d = (k) => new Date(Date.now() - k * 864e5).toISOString();
   return [
-    { t: '서울특별시 노원구 ○○동 아파트 59㎡', sd: '서울특별시', sgg: '노원구', cat: 'home', appr: 620000000, price: 571000000, rate: 92, bidders: 23, dt: d(1) },
-    { t: '샤넬 클래식 플랩백', sd: '서울특별시', sgg: '중구', cat: 'goods', appr: 11000000, price: 12400000, rate: 113, bidders: 17, dt: d(1) },
+    { t: '서울특별시 노원구 ○○동 아파트 59㎡', sd: '서울특별시', sgg: '노원구', cat: 'home', appr: 620000000, price: 571000000, rate: 92, bidders: 23, dt: d(1), use: '아파트', area: 59.9, fails: 0, min: 620000000, prop: '압류재산' },
+    { t: '샤넬 클래식 플랩백', sd: '서울특별시', sgg: '중구', cat: 'goods', appr: 11000000, price: 12400000, rate: 113, bidders: 17, dt: d(1), use: '가방', fails: 1, min: 9900000, prop: '압류재산' },
     { t: '경기도 고양시 ○○동 오피스텔 33㎡', sd: '경기도', sgg: '고양시 일산동구', cat: 'home', appr: 210000000, price: 158000000, rate: 75, bidders: 6, dt: d(2) },
     { t: '충청남도 당진시 ○○리 토지 1,650㎡', sd: '충청남도', sgg: '당진시', cat: 'land', appr: 210000000, price: 98000000, rate: 47, bidders: 2, dt: d(3) },
-    { t: '서울특별시 강동구 ○○동 아파트 84㎡', sd: '서울특별시', sgg: '강동구', cat: 'home', appr: 1150000000, price: 1062000000, rate: 92, bidders: 31, dt: d(4) },
+    { t: '서울특별시 강동구 ○○동 아파트 84㎡', sd: '서울특별시', sgg: '강동구', cat: 'home', appr: 1150000000, price: 1062000000, rate: 92, bidders: 31, dt: d(4), use: '아파트', area: 84.9, fails: 1, min: 1035000000, prop: '압류재산' },
     { t: '서울특별시 송파구 ○○동 빌라 49㎡', sd: '서울특별시', sgg: '송파구', cat: 'home', appr: 380000000, price: 301000000, rate: 79, bidders: 9, dt: d(5) }
   ];
 }

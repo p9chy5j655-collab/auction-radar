@@ -309,4 +309,11 @@
   }
 
   calcMax(); calcBid();
+
+  // 사진 여러 장: 넘길 때 '2 / 5' 표시
+  var gal = document.getElementById('gal'), gc = document.getElementById('galCount');
+  if (gal && gc) gal.addEventListener('scroll', function () {
+    var n = gal.children.length, i = Math.round(gal.scrollLeft / Math.max(1, gal.clientWidth));
+    gc.textContent = Math.min(n, i + 1) + ' / ' + n;
+  }, { passive: true });
 })();
