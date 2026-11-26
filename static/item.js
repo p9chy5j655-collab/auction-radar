@@ -81,7 +81,10 @@
   });
   var maxBid = null;
   function val(id) { var v = parseFloat($(id).value); return isFinite(v) ? v : 0; }
+  var GUIDE = null;
+  try { var gdEl = document.getElementById('guide-data'); if (gdEl) GUIDE = JSON.parse(gdEl.textContent); } catch (e) { GUIDE = null; }
   function calcMax() {
+    if (GUIDE) { maxBid = GUIDE.hi || null; return; }
     var sell = val('mbSell') * 10000, profit = val('mbProfit') / 100, tax = val('mbTax') / 100, fee = val('mbFee') / 100;
     var fixed = (val('mbRepair') + val('mbEvict')) * 10000;
     store.set('ar_mb', { profit: val('mbProfit'), tax: val('mbTax'), fee: val('mbFee'), repair: val('mbRepair'), evict: val('mbEvict') });
@@ -109,7 +112,7 @@
   var bidInput = $('bid');
   bidInput.value = it.min ? Math.round(it.min / 10000) : '';
   var quick = [['최저가로', function () { return it.min ? Math.round(it.min / 10000) : 0; }]];
-  quick.push(['최대 입찰가로', function () { return maxBid ? Math.round(maxBid / 10000) : 0; }, 'max']);
+  quick.push([GUIDE ? '가이드 상한으로' : '최대 입찰가로', function () { return maxBid ? Math.round(maxBid / 10000) : 0; }, 'max']);
   var G = it.cat === 'goods' || it.cat === 'car';
   var stepA = G && (it.min || 0) < 1e7 ? 10 : 500, stepB = stepA * 2;
   var lbl = function (n) { return n >= 1000 ? (n / 1000).toLocaleString('ko-KR') + ',000만' : n + '만'; };
@@ -126,9 +129,10 @@
     var box = function (bg, color, title, text) { v.style.background = bg; v.innerHTML = '<b style="color:' + color + '">' + title + '</b><span>' + text + '</span>'; };
     if (!bid) box('#F7F8FA', '#3A3F4A', '입찰가를 넣어 보세요', '금액을 넣으면 감정가·시세와 비교해 드려요.');
     else if (it.min != null && bid < it.min) box('#FEF3F2', '#B42318', '최저 입찰가보다 낮아요', '최저 입찰가 ' + won(it.min) + ' 이상으로 써야 입찰할 수 있어요.');
-    else if (maxBid && bid > maxBid) box('#FFFAEB', '#B54708', '최대 입찰가를 넘었어요', '위에서 계산한 손익분기 금액보다 ' + won(bid - maxBid) + ' 높아요. 낙찰돼도 남는 게 없을 수 있어요.');
+    else if (maxBid && bid > maxBid) box('#FFFAEB', '#B54708', GUIDE ? '가이드 상한을 넘었어요' : '최대 입찰가를 넘었어요', GUIDE ? '가이드 상한보다 ' + won(bid - maxBid) + ' 높아요. 이 값이면 공매로 사는 이점이 줄어요.' : '위에서 계산한 손익분기 금액보다 ' + won(bid - maxBid) + ' 높아요. 낙찰돼도 남는 게 없을 수 있어요.');
     else if (it.mkt && bid >= it.mkt.med * 0.95) box('#EEF4FF', '#1D4ED8', '시세에 가까워요', '주변 실거래 중간값의 ' + Math.round(bid / it.mkt.med * 100) + '%예요. 일반 매매와 비교해 공매로 사는 이점이 작아요.');
-    else box('#ECFDF3', '#067647', '계산상 남는 범위예요', '최대 입찰가 안쪽이에요. 같은 물건에 몇 명이 들어올지에 따라 결과는 달라질 수 있어요.');
+    else if (GUIDE && GUIDE.lo && bid < GUIDE.lo) box('#EEF4FF', '#1D4ED8', '가이드보다 낮게 썼어요', '입찰은 할 수 있지만, 비슷한 물건이 팔린 값보다 낮아 낙찰될 가능성은 낮을 수 있어요.');
+    else box('#ECFDF3', '#067647', GUIDE ? '가이드 범위 안이에요' : '계산상 남는 범위예요', (GUIDE ? '가이드 범위 안쪽이에요' : '최대 입찰가 안쪽이에요') + '. 같은 물건에 몇 명이 들어올지에 따라 결과는 달라질 수 있어요.');
     $('vsAppr').textContent = it.appr ? Math.round(bid / it.appr * 100) + '%' : '-';
     if ($('vsMkt')) $('vsMkt').textContent = it.mkt ? Math.round(bid / it.mkt.med * 100) + '%' : '-';
     $('deposit').textContent = won(bid * 0.1);

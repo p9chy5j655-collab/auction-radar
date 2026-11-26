@@ -430,6 +430,7 @@ async function fetchResults() {
           out.push({
             t: friendlyTitle({ ...r, onbidCltrNm: r.onbidCltrNm || r.cltrNm || '' }, cat0, num(r.landSqms), num(r.bldSqms)), sd: SD_SHORT(r.lctnSdnm) || reg.sd, sgg: r.lctnSggnm || reg.sgg,
             cat: cat0, appr, price,
+            sub: (cat0 === 'goods' || cat0 === 'car') ? subOf({ ...r, onbidCltrNm: r.onbidCltrNm || r.cltrNm || '' }, cat0) : undefined,
             rate: Math.round((price / appr) * 100), bidders: pickBidders(r), dt: parseKst(r.opbdDt || r.opbdDtm || r.cltrOpbdDt || ''),
             // 퀴즈 힌트용: 용도, 면적, 유찰 횟수, 그 회차 최저 입찰가 (없으면 비워 둬요)
             use: r.cltrUsgSclsCtgrNm || r.cltrUsgMclsCtgrNm || '',
@@ -446,6 +447,18 @@ async function fetchResults() {
   }
   if (RESULT_URL && !out.length) log('입찰결과에서 낙찰가를 찾지 못했어요. 위 필드 목록을 보고 ONBID_RESULT_PRICE_FIELD 변수를 정해 주세요.');
   else log(`입찰결과 낙찰 사례 ${out.length}건 집계 (최근 2주·매각 기준)`);
+  return out;
+}
+// 동산·차량: 같은 종류(명품·금·전자·차량 등) 최근 낙찰가율 분포 (중간값과 가운데 50% 범위)
+function goodsRates(results) {
+  const g = {};
+  const q = (arr, p) => { const a = [...arr].sort((x, y) => x - y); const i = (a.length - 1) * p; const lo = Math.floor(i); return Math.round(a[lo] + (a[Math.ceil(i)] - a[lo]) * (i - lo)); };
+  for (const r of results) {
+    if (!(r.cat === 'goods' || r.cat === 'car') || r.rate < 20 || r.rate > 300) continue;
+    for (const k of [`${r.cat}|${r.sub || ''}`, r.cat]) (g[k] = g[k] || []).push(r.rate);
+  }
+  const out = {};
+  for (const [k, arr] of Object.entries(g)) if (arr.length >= 3) out[k] = { med: q(arr, 0.5), lo: q(arr, 0.25), hi: q(arr, 0.75), n: arr.length };
   return out;
 }
 function regionRates(results) {
@@ -800,6 +813,40 @@ export function risksOf(it) {
   return r;
 }
 
+// 동산·차량 입찰가 가이드: 이용자가 숫자를 넣지 않아도 물건 특성과 실제 낙찰 데이터로 범위를 보여줘요
+const GUIDE_NOTE = {
+  luxury: ['정품 보증이 없어요', '감정가는 정품을 보장하지 않고 반품도 안 돼요. 그래서 새 제품 가격의 80%를 넘기지 않는 걸 기준선으로 잡았어요.', 0.8],
+  gold: ['금값을 기준으로 따져요', '귀금속은 무게·순도로 값이 정해져요. 오늘 금 시세 × 무게보다 높게 쓰면 손해예요. 장신구 세공비는 되팔 때 쳐 주지 않아요.', 0.95],
+  elec: ['작동 여부를 모를 수 있어요', '전자기기는 작동 확인·구성품이 없으면 값이 크게 떨어지고, 출시가 오래될수록 빨리 내려가요. 새 제품 가격의 60%를 기준선으로 잡았어요.', 0.6],
+  car: ['이전등록비가 더 들어요', '낙찰가 외에 취득세 등 이전등록비(차량가의 약 7%)와 탁송·수리비가 들어요. 실제 드는 돈으로 중고차 시세와 비교하세요.', 1],
+  heavy: ['운반·등록 비용이 커요', '중장비·선박은 운반(트레일러·크레인)과 등록 비용이 따로 들어요. 견적을 먼저 받아 보고 그만큼 낮춰 쓰세요.', 1],
+  machine: ['쓸 곳이 정해져 있어야 해요', '기계·장비는 사 줄 사람을 찾기 어렵고 운반·설치비가 들어요. 직접 쓸 계획이 없다면 최저가 근처가 무난해요.', 1],
+  living: ['운반비와 상태를 감안해요', '가구·생활용품은 중고 값이 낮고 운반비가 들어요. 최저가 근처에서 시작하는 게 무난해요.', 1]
+};
+function goodsGuide(it, kw) {
+  if (!it.min) return null;
+  const note = GUIDE_NOTE[it.cat === 'car' ? 'car' : it.sub] || ['상태를 사진으로만 봐요', '동산은 미리 실물을 보기 어렵고 반품이 안 돼요. 그만큼 낮춰 쓰는 게 안전해요.', 1];
+  const lines = [];
+  lines.push({ k: 'min', label: '최저 입찰가', v: it.min, sub: '이보다 낮게는 입찰할 수 없어요' });
+  let mid = null;
+  if (it.gr && it.appr) {
+    mid = Math.round(it.appr * it.gr.med / 100 / 1e4) * 1e4;
+    lines.push({ k: 'gr', label: '비슷한 물건 실제 낙찰 수준', v: mid, sub: `최근 2주 ${it.gr.same ? `같은 종류(${SUB_NAME[it.sub] || CAT_NAME[it.cat]})` : (it.cat === 'car' ? '차량' : '동산')} 낙찰 ${it.gr.n}건은 감정가의 ${it.gr.lo}~${it.gr.hi}%(중간 ${it.gr.med}%)에 팔렸어요` });
+  }
+  const conf = it.cat === 'car' ? false : (!!kw?.code || it.sub === 'gold');
+  if (it.newp && conf) lines.push({ k: 'new', label: '새 제품 가격', v: it.newp, sub: '네이버 쇼핑 같은 제품번호 최저가 기준' });
+  if (it.appr) lines.push({ k: 'appr', label: '감정가', v: it.appr, sub: '이 선을 넘기면 공매로 살 이유가 줄어요' });
+  // 상한: 감정가, (새 제품 가격 × 기준 비율), 차량은 이전등록비 7%를 뺀 값
+  let cap = it.appr || null;
+  if (it.newp && conf && note[2] < 1) cap = Math.min(cap || Infinity, it.newp * note[2]);
+  if (it.cat === 'car' && cap) cap = cap / 1.07;
+  let lo = it.min, hi = cap ? Math.max(it.min, cap) : null;
+  if (mid) { lo = Math.max(it.min, Math.round(it.appr * it.gr.lo / 100)); hi = hi ? Math.min(hi, Math.max(lo, Math.round(it.appr * it.gr.hi / 100))) : Math.round(it.appr * it.gr.hi / 100); }
+  if (hi && hi < lo) hi = lo;
+  const r10 = (v) => (v == null ? null : Math.round(v / 1e4) * 1e4);
+  return { lines, lo: r10(lo), hi: r10(hi), note, carFee: it.cat === 'car', capUsed: !!(it.newp && conf && note[2] < 1) };
+}
+
 // 동산·차량 전용 카드: 물건 카드, 받아 오는 방법, 꼭 확인할 것
 function goodsCards(it, kw, place) {
   const isCar = it.cat === 'car';
@@ -976,7 +1023,18 @@ ${isCar ? '' : `<a class="btn-outline" href="https://search.shopping.naver.com/s
 ${risks.length ? `<ul class="risks">${risks.map(([h, d]) => `<li><b>${esc(h)}</b><span>${esc(d)}</span></li>`).join('')}</ul>` : `<p class="ok-line">데이터상 눈에 띄는 위험 신호는 없어요. 그래도 ${G ? '공고문의 물건 상태·인도 조건' : '공고문과 등기부'}는 꼭 확인하세요.</p>`}
 </section>
 
-<details class="card-block fold" id="maxbid"${G ? '' : ' open'}>
+${G ? (() => {
+  const gd = goodsGuide(it, kw);
+  if (!gd) return '<details class="card-block fold" id="maxbid"><summary><h2>얼마까지 쓰면 될까?</h2></summary><p class="muted small">최저 입찰가가 공개되지 않은 물건이라 가이드를 만들 수 없어요. 온비드 원문을 확인하세요.</p>';
+  const max = Math.max(...gd.lines.map((l) => l.v));
+  return `<details class="card-block fold" id="maxbid" open>
+<summary><h2>얼마까지 쓰면 될까?</h2><span class="muted small">이 물건 기준 가이드</span></summary>
+<div class="guide-range"><span>가이드 입찰가</span><b>${won(gd.lo)}${gd.hi && gd.hi > gd.lo ? ` ~ ${won(gd.hi)}` : ''}</b><small>${gd.hi && gd.hi > gd.lo ? '이 범위 안에서 쓰는 걸 권해요' : '최저 입찰가 근처에서 쓰는 걸 권해요'}</small></div>
+<ul class="ladder2">${gd.lines.sort((a, b) => a.v - b.v).map((l) => `<li class="l-${l.k}"><div class="ld-top"><span>${esc(l.label)}</span><b>${won(l.v)}</b></div><div class="ld-bar"><i style="width:${Math.max(4, Math.round(l.v / max * 100))}%"></i></div><small>${esc(l.sub)}</small></li>`).join('')}</ul>
+<div class="guide-why"><b>${esc(gd.note[0])}</b><p>${esc(gd.capUsed ? gd.note[1] : gd.note[1].replace(/\s*(그래서 )?새 제품 가격의 \d+%[^.]*\.\s*$/, ''))}</p></div>
+<p class="note">가이드는 최저 입찰가, 같은 종류 물건의 최근 낙찰가율, 새 제품 가격, 감정가로 계산한 참고값이에요. 낙찰이나 수익을 보장하지 않아요.${gd.carFee ? ' 차량은 이전등록비(약 7%)를 빼고 계산했어요.' : ''}</p>
+<script type="application/json" id="guide-data">${JSON.stringify({ lo: gd.lo, hi: gd.hi })}</script>`;
+})() : `<details class="card-block fold" id="maxbid" open>
 <summary><h2>얼마까지 써도 될까?</h2><span class="muted small">${G ? '시세만 넣으면 계산돼요' : '최대 입찰가 거꾸로 계산'}</span></summary>
 <p class="muted small">${G ? '되팔거나 새로 살 때 가격에서 원하는 이익과 비용을 빼고, 손해 보지 않는 최대 입찰가를 계산해요.' : '팔 때 예상 가격에서 비용과 원하는 이익을 빼고, 손해 보지 않는 최대 입찰가를 거꾸로 계산해요.'}</p>
 <div class="form-grid">
@@ -990,6 +1048,7 @@ ${G ? (isCar ? `<label>이전등록비(취득세 등)<span class="input-row sm">
 </div>
 <div class="maxbid-result" id="mbResult"></div>
 <p class="note">${G ? (isCar ? '차량 취득세는 차종·용도에 따라 달라요. 기본값 7%는 대략적인 출발점이에요.' : '동산은 보통 취득세·등기비가 없지만 공고문의 부가세·수수료 조건을 꼭 확인하세요.') : '세율은 물건 종류·보유 주택 수·지역에 따라 달라져요. 기본값은 대략적인 출발점일 뿐이니 본인 상황에 맞게 바꾸세요. 세금은 세무사, 권리관계는 법무사 확인을 권해요.'}</p>
+`}
 <h3 class="sub-h">내 입찰가로 계산해 보기</h3>
 
 <label class="input-row" for="bid"><input id="bid" type="number" inputmode="numeric" min="0" step="100"><span>만원</span></label>
@@ -1123,9 +1182,15 @@ async function main() {
     if (RESULT_URL) results = await fetchResults();
   }
   const rates = regionRates(results);
+  const gRates = goodsRates(results);
   for (const it of items) {
     const rr = rates[`${SD_SHORT(it.sd)}|${it.cat}`];
     if (rr) it.rr = rr;
+    if (it.cat === 'goods' || it.cat === 'car') {
+      const same = gRates[`${it.cat}|${it.sub || ''}`];
+      const g = same || gRates[it.cat];
+      if (g) it.gr = { ...g, same: !!same };
+    }
   }
   results.sort((a, b) => (b.dt || '').localeCompare(a.dt || '') || b.price - a.price);
 

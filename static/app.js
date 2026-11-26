@@ -341,6 +341,7 @@
       var pool = base.filter(function (i) { return isOdd(i) && i.thumb; }).sort(function (a, b) { return score(b) - score(a); }).slice(0, 7);
       if (!pool.length) pool = base.filter(isOdd).sort(function (a, b) { return score(b) - score(a); }).slice(0, 7);
       it = pool[day % (pool.length || 1)]; label = '오늘의 한 점';
+      shownPickId = it && it.id;
     } else {
       it = base.sort(function (a, b) { return score(b) - score(a); })[0]; label = '오늘의 픽';
     }
@@ -417,42 +418,58 @@
     return '<section class="shelf' + (sh.re ? ' shelf-re' : '') + '"><div class="section-head"><h2>' + (sh.re ? '<span class="re-tag">부동산</span>' : '') + esc(sh.title) + '</h2><button class="link-btn" data-go="' + sh.go + '"' + (sh.cat ? ' data-gocat="' + sh.cat + '"' : '') + '>' + esc(sh.sub) + ' · 전체</button></div>' +
       '<div class="scroller">' + sh.list.map(function (i) { return miniHtml(i, sh.top(i)); }).join('') + '</div></section>';
   }
+  var shownPickId = null, pageSeen = { id: {}, name: {} };
   function renderShelves(closing) {
     var items = data.items, shelves = [];
     var dd = function (i) { return '<span class="badge badge-red">' + esc(ddayLabel(i)) + '</span>'; };
     var lab = function (i) { return '<span class="badge">' + esc(catLabel(i)) + '</span>'; };
-    var cl = closing.filter(function (i) { return !i.risk; }).sort(function (a, b) { return score(b) - score(a); }).slice(0, 12);
+    var cl = closing.filter(function (i) { return !i.risk; }).sort(function (a, b) { return score(b) - score(a); }).slice(0, 40);
     if (MODE === 'goods') {
       if (cl.length) shelves.push({ title: '오늘·내일 마감', sub: '48시간 이내', go: 'closing', list: cl, top: dd });
-      var small = items.filter(cheapOdd).sort(function (a, b) { return a.min - b.min; }).slice(0, 12);
+      var small = items.filter(cheapOdd).sort(function (a, b) { return a.min - b.min; }).slice(0, 40);
       if (small.length) shelves.push({ title: '100만 원 이하로 시작해요', sub: '소액 물건', go: 'cheapodd', list: small, top: lab });
       [['luxury', '명품·시계 모음'], ['car', '자동차 모음'], ['elec', '전자기기 모음'], ['gold', '금·귀금속 모음']].forEach(function (c) {
-        var l = items.filter(function (i) { return i.sub === c[0] && !i.risk; }).sort(function (a, b) { return score(b) - score(a); }).slice(0, 12);
+        var l = items.filter(function (i) { return i.sub === c[0] && !i.risk; }).sort(function (a, b) { return score(b) - score(a); }).slice(0, 40);
         if (l.length >= 2) shelves.push({ title: c[1], sub: l.length + '건 이상', go: 'top', cat: c[0], list: l, top: function (i) { return badgesOf(i); } });
       });
-      var ranked = items.filter(function (i) { return i.rank && !i.trap && !lowball(i); }).sort(function (a, b) { return a.rank - b.rank; }).slice(0, 10);
+      var ranked = items.filter(function (i) { return i.rank && !i.trap && !lowball(i); }).sort(function (a, b) { return a.rank - b.rank; }).slice(0, 40);
       if (ranked.length) shelves.push({ title: '온비드에서 관심 많은 물건', sub: '이번 주 관심 저장 순', go: 'rank', list: ranked, top: function (i) { return '<span class="badge badge-hot">' + i.rank + '위</span>'; } });
       // 동산이 적어도 첫 화면이 비지 않게 부동산 줄을 사이사이 넣어요 (위험 신호 있는 물건 제외)
       var reS = [], reAll = allItems.filter(function (i) { return !isGd(i) && !i.trap && !lowball(i) && i.min != null; });
-      var half = reAll.filter(isHalf).sort(function (a, b) { return a.rate - b.rate; }).slice(0, 10);
+      var half = reAll.filter(isHalf).sort(function (a, b) { return a.rate - b.rate; }).slice(0, 40);
       if (half.length) reS.push({ title: '반값까지 내려온 부동산', sub: '감정가 50% 이하', go: 'half', cat: 'all', list: half, top: lab });
-      var under1 = reAll.filter(function (i) { return i.cat === 'home' && i.min <= 1e8; }).sort(function (a, b) { return score(b) - score(a); }).slice(0, 10);
+      var under1 = reAll.filter(function (i) { return i.cat === 'home' && i.min <= 1e8; }).sort(function (a, b) { return score(b) - score(a); }).slice(0, 40);
       if (under1.length) reS.push({ title: '1억 이하로 시작하는 집', sub: '아파트·주택', go: 'top', cat: 'home', list: under1, top: lab });
-      var metro = reAll.filter(function (i) { return /서울|경기|인천/.test(i.sd) && (i.cat === 'home' || i.cat === 'shop') && i.rate != null && i.rate <= 80; }).sort(function (a, b) { return a.rate - b.rate; }).slice(0, 10);
+      var metro = reAll.filter(function (i) { return /서울|경기|인천/.test(i.sd) && (i.cat === 'home' || i.cat === 'shop') && i.rate != null && i.rate <= 80; }).sort(function (a, b) { return a.rate - b.rate; }).slice(0, 40);
       if (metro.length) reS.push({ title: '수도권 집·상가, 감정가 80% 이하', sub: '서울·경기·인천', go: 'top', cat: 'home', list: metro, top: function (i) { return '<span class="badge">' + esc(shortSido(i.sd)) + '</span>'; } });
-      var mk = reAll.filter(isCheap).sort(function (a, b) { return a.mkt.ratio - b.mkt.ratio; }).slice(0, 10);
+      var mk = reAll.filter(isCheap).sort(function (a, b) { return a.mkt.ratio - b.mkt.ratio; }).slice(0, 40);
       if (mk.length) reS.push({ title: '같은 단지 실거래가보다 낮게 시작하는 아파트', sub: '실거래가 비교', go: 'top', cat: 'home', list: mk, top: function (i) { return '<span class="badge badge-blue">시세의 ' + i.mkt.ratio + '%</span>'; } });
       reS.forEach(function (x) { x.re = true; });
       var mixed = [], gi = 0, ri = 0;
       while (gi < shelves.length || ri < reS.length) { if (gi < shelves.length) mixed.push(shelves[gi++]); if (ri < reS.length) mixed.push(reS[ri++]); }
       shelves = mixed;
     } else {
-      var ranked2 = items.filter(function (i) { return i.rank && !i.trap && !lowball(i); }).sort(function (a, b) { return a.rank - b.rank; }).slice(0, 10);
+      var ranked2 = items.filter(function (i) { return i.rank && !i.trap && !lowball(i); }).sort(function (a, b) { return a.rank - b.rank; }).slice(0, 40);
       if (ranked2.length) shelves.push({ title: '온비드에서 관심 많은 물건', sub: '이번 주 관심 저장 순', go: 'rank', list: ranked2, top: function (i) { return '<span class="badge badge-hot">' + i.rank + '위</span>'; } });
       if (cl.length) shelves.push({ title: '곧 마감돼요', sub: '48시간 이내', go: 'closing', list: cl, top: dd });
-      var half = items.filter(isHalf).sort(function (a, b) { return a.rate - b.rate; }).slice(0, 10);
+      var half = items.filter(isHalf).sort(function (a, b) { return a.rate - b.rate; }).slice(0, 40);
       if (half.length) shelves.push({ title: '반값 부동산', sub: '감정가 50% 이하', go: 'half', list: half, top: lab });
     }
+    // 같은 물건(또는 같은 건물의 다른 호수처럼 이름이 같은 물건)은 한 화면에 한 번만 보여줘요
+    var seenId = {}, seenName = {};
+    if (shownPickId) seenId[shownPickId] = 1;
+    var nameKey = function (x) { return (x.t || '').replace(/\s+/g, '') + '|' + (x.sgg || ''); };
+    shelves = shelves.map(function (sh) {
+      var out = [], local = {};
+      sh.list.forEach(function (x) {
+        var nk = nameKey(x);
+        if (out.length >= 12 || seenId[x.id] || seenName[nk] || local[nk]) return;
+        local[nk] = 1; out.push(x);
+      });
+      out.forEach(function (x) { seenId[x.id] = 1; seenName[nameKey(x)] = 1; });
+      sh.list = out; return sh;
+    }).filter(function (sh) { return sh.list.length >= 2; });
+    pageSeen = { id: seenId, name: seenName };
     $('shelves').innerHTML = shelves.map(shelfHtml).join('');
   }
   // 낙찰가 맞히기: 최근 실제 낙찰 결과로 4지선다 퀴즈 (기기에만 점수 저장)
@@ -556,7 +573,11 @@
       return sb - sa;
     });
     var sparse = data.items.length < 30;
-    var list = re.slice(0, sparse ? 5 : 3);
+    var dn = {}, list = re.filter(function (x) {
+      var k = (x.t || '').replace(/\s+/g, '') + '|' + (x.sgg || '');
+      if (pageSeen.id[x.id] || pageSeen.name[k] || dn[k]) return false;
+      dn[k] = 1; return true;
+    }).slice(0, sparse ? 5 : 3);
     if (!list.length) { el.hidden = true; return; }
     el.innerHTML = '<div class="section-head"><h2>감정가보다 많이 내려온 부동산</h2><a class="link-btn" href="realestate.html?tab=half">반값 부동산 전체</a></div>' +
       '<p class="section-sub">감정가의 60% 이하로 내려온 집·땅·상가 중 위험 신호가 없는 물건만 골랐어요.</p>' +
