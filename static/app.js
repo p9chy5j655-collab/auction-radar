@@ -7,14 +7,14 @@
   var allItems = [];
   var PAGE = 30;
   var CAT = { home: '아파트·주택', shop: '상가·업무', land: '토지', etc: '기타 부동산', goods: '동산', car: '차량' };
-  var SUB = { right: '주식·채권·권리', gold: '귀금속·금', luxury: '명품·시계', elec: '전자제품', machine: '기계·장비', living: '가구·생활', stock: '재고·원자재', goods_etc: '기타 동산', car: '자동차', heavy: '중장비·선박' };
+  var SUB = { right: '주식·채권·권리', gold: '귀금속·금', luxury: '명품·시계', elec: '전자제품', machine: '기계·장비', living: '가구·생활', stock: '재고·원자재', goods_etc: '기타 동산', car: '자동차', bike: '오토바이', heavy: '중장비·선박' };
   // 구경하는 재미가 있는 물건(이색): 주식·채권·재고·기계는 빼요
   var ODD = { luxury: 1, gold: 1, elec: 1, living: 1, car: 1, heavy: 1 };
   var GROUP = { luxury: 'gL', gold: 'gL', elec: 'eL', living: 'eL', car: 'cH', heavy: 'cH', right: 'oR', machine: 'oR', stock: 'oR', goods_etc: 'oR' };
   function isOdd(it) { return !!ODD[it.sub] || (!it.sub && (it.cat === 'goods' || it.cat === 'car')); }
-  var GOODS_CATS = [['luxury', '명품·시계'], ['gold', '금·귀금속'], ['elec', '전자기기'], ['car', '자동차'], ['living', '생활·가구'], ['heavy', '중장비·선박'], ['oR', '권리·기타']];
+  var GOODS_CATS = [['luxury', '명품·시계'], ['gold', '금·귀금속'], ['elec', '전자기기'], ['car', '자동차'], ['living', '생활·가구'], ['machine', '기계·장비'], ['heavy', '중장비·선박'], ['oR', '권리·기타']];
   function grp(it) {
-    if (MODE === 'goods') return ({ right: 'oR', machine: 'oR', stock: 'oR', goods_etc: 'oR' })[it.sub] || it.sub || it.cat;
+    if (MODE === 'goods') return ({ right: 'oR', stock: 'oR', goods_etc: 'oR', bike: 'car' })[it.sub] || it.sub || it.cat;
     return GROUP[it.sub] || it.cat;
   }
   function catLabel(it) { return SUB[it.sub] || CAT[it.cat]; }
@@ -84,8 +84,12 @@
     var h = hoursLeft(it);
     if (!isFinite(h)) return '';
     if (h < 0) return '마감';
-    if (h < 24) return '오늘 마감 ' + Math.max(1, Math.floor(h)) + '시간 남음';
-    return '마감 D-' + Math.ceil(h / 24);
+    // 남은 시간이 아니라 한국 달력 날짜로 '오늘/내일/D-n'을 정해요
+    var kday = function (t) { return Math.floor((t + 9 * 3600e3) / 864e5); };
+    var dd = kday(new Date(it.en).getTime()) - kday(Date.now());
+    if (dd <= 0) return '오늘 마감 ' + Math.max(1, Math.floor(h)) + '시간 남음';
+    if (dd === 1) return '내일 마감';
+    return '마감 D-' + dd;
   }
   // 감정가 30% 미만은 숨은 조건(인수 보증금·지분 등)이 많아 추천에서 빼요
   function lowball(it) { return !!it.trap || (it.rate != null && it.rate < 30); }
@@ -95,14 +99,29 @@
   function isGd(i) { return i.cat === 'goods' || i.cat === 'car'; }
   // 검색: 띄어쓰기·대소문자 무시, 흔한 다른 표기도 함께 찾아요
   var SYN = [['그랜저', '그랜져'], ['아이폰', 'iphone'], ['벤츠', 'benz', 'mercedes'], ['bmw', '비엠더블유', '비엠'], ['롤렉스', 'rolex'], ['샤넬', 'chanel'], ['구찌', 'gucci'], ['루이비통', 'louis', 'vuitton'], ['에르메스', 'hermes'], ['까르띠에', 'cartier'], ['오메가', 'omega'], ['맥북', 'macbook'], ['아이패드', 'ipad'], ['갤럭시', 'galaxy'], ['삼성', 'samsung'], ['애플', 'apple'], ['포르쉐', 'porsche'], ['아우디', 'audi'], ['제네시스', 'genesis'], ['쏘나타', '소나타'], ['스타렉스', '스타랙스'], ['아파트', 'apt'], ['오피스텔', '오피스탤'], ['금', '골드', 'gold'], ['노트북', '랩탑', 'laptop']];
-  function norm(t) { return String(t || '').toLowerCase().replace(/\s+/g, ''); }
+  function norm(t) { return String(t || '').toLowerCase().replace(/Ⅰ/g, '1').replace(/Ⅱ/g, '2').replace(/Ⅲ/g, '3').replace(/Ⅳ/g, '4').replace(/Ⅴ/g, '5').replace(/\s+/g, ''); }
   function qVariants(q) {
     var n = norm(q), out = [n];
     SYN.forEach(function (g) { g.forEach(function (w) { if (n.indexOf(norm(w)) !== -1) g.forEach(function (v) { var x = n.replace(norm(w), norm(v)); if (out.indexOf(x) === -1) out.push(x); }); }); });
     return out;
   }
-  function hay(it) { return norm(it.t + ' ' + (it.sd || '') + ' ' + (it.sgg || '') + ' ' + (it.emd || '') + ' ' + (it.use || '') + ' ' + (CAT[it.cat] || '') + ' ' + (SUB[it.sub] || '')); }
-  function matchQ(it, vs) { var h = hay(it); for (var i = 0; i < vs.length; i++) if (h.indexOf(vs[i]) !== -1) return true; return false; }
+  function hay(it) { return norm(it.t + ' ' + (it.sd || '') + ' ' + (it.sgg || '') + ' ' + (it.emd || '') + ' ' + (it.use || '') + ' ' + (CAT[it.cat] || '') + ' ' + (it.sub === 'heavy' ? '' : (SUB[it.sub] || ''))); }
+  function matchQ(it, vs) {
+    var h = hay(it);
+    for (var i = 0; i < vs.length; i++) {
+      // 연도(예: 2020)는 다른 숫자(20205㎡)에 섞이지 않게 숫자 경계로 찾아요
+      if (/^(19|20)\d{2}$/.test(vs[i])) { if (new RegExp('(^|[^0-9])' + vs[i] + '([^0-9]|$)').test(h)) return true; continue; }
+      if (h.indexOf(vs[i]) !== -1) return true;
+    }
+    return false;
+  }
+  function regionHit(it, vs) { var r = norm((it.sd || '') + (it.sgg || '') + (it.emd || '')); return vs.some(function (v) { return r.indexOf(v) !== -1; }) ? 1 : 0; }
+  function eulReul(w) {
+    var c = String(w || '').trim().slice(-1), code = c.charCodeAt(0);
+    if (code >= 0xAC00 && code <= 0xD7A3) return w + ((code - 0xAC00) % 28 ? '을' : '를');
+    if (/[013678]/.test(c) || /[LMNR]/i.test(c)) return w + '을';
+    return w + '를';
+  }
   function isRight(i) { return i.sub === 'right' || i.sub === 'stock'; }
   var RE_CATS = [['home', '아파트·주택'], ['shop', '상가·업무'], ['land', '토지']];
   function score(it) {
@@ -165,7 +184,7 @@
         { id: 'top', label: '추천', head: '추천 물건', sub: '사진이 있고 눈길 끄는 물건을 먼저 보여드려요.' },
         { id: 'closing', label: '곧 마감', head: '48시간 안에 마감', sub: '입찰 마감이 가까운 순서예요.' },
         { id: 'new', label: '새로 들어온', head: '새로 들어온 물건', sub: '최근 48시간 안에 입찰이 시작됐거나 바뀐 물건이에요.' },
-        { id: 'half', label: '반값', head: '감정가 50% 이하 물건', sub: '여러 번 유찰돼 값이 많이 내려간 물건이에요. 동산·차량을 먼저 보여드려요.' },
+        { id: 'half', label: '반값', head: '감정가 50% 이하 물건', sub: '여러 번 유찰돼 값이 많이 내려간 물건이에요.' },
         { id: 'cheapodd', label: '100만원 이하', head: '100만원 이하로 시작하는 물건', sub: '최저가가 100만원 이하이고 위험 신호가 없는 물건이에요.' },
         { id: 'rank', label: '온비드 인기', head: '온비드에서 관심 많은 물건', sub: '온비드에서 일주일간 관심 저장이 많았던 순위예요.' }
       ];
@@ -180,6 +199,11 @@
       ];
     }
     if (!data.items.some(function (i) { return i.rank; })) t = t.filter(function (x) { return x.id !== 'rank'; });
+    // 진열 줄의 '전체'에서만 여는 숨은 목록 (탭 줄에는 열렸을 때만 보여요)
+    t.push({ id: 'halfre', label: '반값 부동산', head: '반값까지 내려온 부동산', sub: '감정가 50% 이하인 집·땅·상가예요. 위험 신호가 있는 물건은 뺐어요.', hidden: true });
+    t.push({ id: 'under1', label: '1억 이하 집', head: '1억 이하로 시작하는 집', sub: '최저 입찰가가 1억 원 이하인 아파트·주택이에요.', hidden: true });
+    t.push({ id: 'metro', label: '수도권 80% 이하', head: '수도권 집·상가, 감정가 80% 이하', sub: '서울·경기·인천의 집·상가 중 감정가의 80% 이하로 시작하는 물건이에요.', hidden: true });
+    if (MODE === 'goods') t.push({ id: 'cheap', label: '시세보다 낮게', head: '같은 단지 실거래가보다 낮게 시작하는 아파트', sub: '최저가가 같은 단지 비슷한 면적 실거래 중간값의 85% 이하예요.', hidden: true });
     if (cond) t.unshift({ id: 'cond', label: '맞춤', head: '나에게 맞는 물건', sub: '' });
     var n = Object.keys(liked).length;
     if (n || st.tab === 'liked') t.push({ id: 'liked', label: '관심 ' + n, head: '관심 등록한 물건', sub: '동산·부동산 모두 모아 보여드려요. 마감이 지나면 사라져요.' });
@@ -201,6 +225,9 @@
         case 'rank': return !!it.rank;
         case 'cheapodd': return cheapOdd(it);
         case 'cheap': return isCheap(it);
+        case 'halfre': return isHalf(it) && !isGd(it) && !it.trap;
+        case 'under1': return it.cat === 'home' && it.min != null && it.min <= 1e8 && !it.trap && !lowball(it);
+        case 'metro': return /서울|경기|인천/.test(it.sd) && (it.cat === 'home' || it.cat === 'shop') && it.rate != null && it.rate <= 80 && !it.trap && !lowball(it);
         case 'new': return it.isNew;
         case 'closing': return hoursLeft(it) <= 48;
         case 'odd': return isOdd(it);
@@ -209,6 +236,7 @@
         default: return true;
       }
     });
+    if (qv) list.sort(function (a, b) { return regionHit(b, qv) - regionHit(a, qv); });
     var sort = st.sort;
     if (sort === 'auto') sort = st.tab === 'cheapodd' ? 'low' : st.tab === 'rank' ? 'rank' : st.tab === 'half' ? 'rate' : st.tab === 'closing' ? 'end' : st.tab === 'cheap' ? 'mkt' : st.tab === 'cond' ? 'fit' : 'score';
     var cmp = {
@@ -249,6 +277,7 @@
       case 'luxury': return /가방|백|핸드백|지갑/.test(t) ? 'bag' : 'watch';
       case 'gold': return 'gold';
       case 'elec': return 'elec';
+      case 'bike': return 'car';
       case 'car': return /포터|봉고|트럭|화물|카고/.test(t) ? 'truck' : /SUV|카이엔|팰리세이드|쏘렌토|싼타페|X[3-7]|GV80|카니발|투싼|스포티지/.test(t) ? 'suv' : 'car';
       case 'heavy': return 'heavy';
       case 'machine': return 'heavy';
@@ -291,7 +320,7 @@
   }
   function cardHtml(it) {
     var isLiked = !!liked[it.id];
-    var region = MODE === 'goods' ? (it.cat === 'car' ? '차량' : catLabel(it)) + (it.sd ? ' · ' + shortSido(it.sd) : '')
+    var region = MODE === 'goods' ? catLabel(it) + (it.sd ? ' · ' + shortSido(it.sd) : '')
       : [shortSido(it.sd), it.sgg, it.emd].filter(Boolean).join(' ') + ' · 유찰 ' + it.fails + '회';
     var rateTxt = it.rate != null && !lowball(it) ? '<em class="' + (isHalf(it) ? 'hot' : '') + '">감정가의 ' + it.rate + '%</em>' : it.appr == null ? '<em>감정가 비공개</em>' : '';
     return '<article class="card2">' +
@@ -327,11 +356,22 @@
       return '<a class="pre-item" href="item/' + encodeURIComponent(r[0]) + '.html"><b>' + esc(r[1]) + '</b><span>' + esc([r[2], r[3]].filter(Boolean).join(' ')) + (r[5] != null ? ' · ' + won(r[5]) : '') + (r[6] ? ' · 감정가의 ' + r[6] + '%' : '') + '</span></a>';
     }).join('');
   }
+  function saveUrl() {
+    try {
+      var u = new URLSearchParams();
+      if (st.tab && st.tab !== 'top' && st.tab !== 'cond') u.set('tab', st.tab);
+      if (st.cat && st.cat !== 'all') u.set('cat', st.cat);
+      if (st.q) u.set('q', st.q);
+      var qs = u.toString();
+      history.replaceState(null, '', location.pathname + (qs ? '?' + qs : '') + location.hash);
+    } catch (e) { /* 무시 */ }
+  }
   function render() {
+    saveUrl();
     var defs = tabsDef();
     if (!defs.some(function (t) { return t.id === st.tab; })) st.tab = 'top';
     var cur = defs.filter(function (t) { return t.id === st.tab; })[0];
-    $('tabs').innerHTML = defs.map(function (t) {
+    $('tabs').innerHTML = defs.filter(function (t) { return !t.hidden || t.id === st.tab; }).map(function (t) {
       return '<button role="tab" data-tab="' + t.id + '" aria-selected="' + (t.id === st.tab) + '">' + esc(t.label) + '</button>';
     }).join('');
 
@@ -350,8 +390,10 @@
     $('sub').textContent = st.tab === 'cond' && cond ? condText(cond) : cur.sub;
     $('count').textContent = list.length.toLocaleString('ko-KR') + '건';
     var shown = list.slice(0, st.shown);
-    if (shown.length) $('list').innerHTML = shown.map(cardHtml).join('') + extraHtml(list);
-    else $('list').innerHTML = (extraHtml(list) || '<div class="empty">' + (st.tab === 'liked' ? '하트를 눌러 관심 물건을 모아보세요.' : st.q.trim() ? '‘' + esc(st.q.trim()) + '’ 물건은 지금 공매에 없어요.<br>새로 들어오면 매시간 여기 보여드려요.' : '조건에 맞는 물건이 지금은 없어요.<br>종류나 지역을 넓혀 보세요.') + '</div>');
+    var ex = extraHtml(list);
+    if (ex) $('count').textContent = list.length.toLocaleString('ko-KR') + '건 + 다른 물건';
+    if (shown.length) $('list').innerHTML = shown.map(cardHtml).join('') + ex;
+    else $('list').innerHTML = (ex || '<div class="empty">' + (st.tab === 'liked' ? '하트를 눌러 관심 물건을 모아보세요.' : st.q.trim() ? '‘' + esc(st.q.trim()) + '’ 물건은 지금 공매에 없어요.<br>새로 들어오면 매시간 여기 보여드려요.' : '조건에 맞는 물건이 지금은 없어요.<br>종류나 지역을 넓혀 보세요.') + '</div>');
     $('more').hidden = list.length <= st.shown;
     $('more').textContent = '더 보기 (' + (list.length - st.shown).toLocaleString('ko-KR') + '건 남음)';
 
@@ -470,7 +512,7 @@
       if (cl.length) shelves.push({ title: '오늘·내일 마감', sub: '48시간 이내', go: 'closing', list: cl, top: dd });
       var small = items.filter(cheapOdd).sort(function (a, b) { return a.min - b.min; }).slice(0, 40);
       if (small.length) shelves.push({ title: '100만 원 이하로 시작해요', sub: '소액 물건', go: 'cheapodd', list: small, top: lab });
-      [['luxury', '명품·시계 모음'], ['car', '자동차 모음'], ['elec', '전자기기 모음'], ['gold', '금·귀금속 모음']].forEach(function (c) {
+      [['car', '자동차 모음'], ['luxury', '명품·시계 모음'], ['gold', '금·귀금속 모음'], ['elec', '전자기기 모음']].forEach(function (c) {
         var l = items.filter(function (i) { return i.sub === c[0] && !i.risk; }).sort(function (a, b) { return score(b) - score(a); }).slice(0, 40);
         if (l.length >= 2) shelves.push({ title: c[1], sub: l.length + (c[0] === 'car' ? '대' : '점'), go: 'top', cat: c[0], list: l, top: function (i) { return badgesOf(i); } });
       });
@@ -479,13 +521,13 @@
       // 동산이 적어도 첫 화면이 비지 않게 부동산 줄을 사이사이 넣어요 (위험 신호 있는 물건 제외)
       var reS = [], reAll = allItems.filter(function (i) { return !isGd(i) && !i.trap && !lowball(i) && i.min != null; });
       var half = reAll.filter(isHalf).sort(function (a, b) { return a.rate - b.rate; }).slice(0, 40);
-      if (half.length) reS.push({ title: '반값까지 내려온 부동산', sub: '감정가 50% 이하', go: 'half', cat: 'all', list: half, top: lab });
+      if (half.length) reS.push({ title: '반값까지 내려온 부동산', sub: '감정가 50% 이하', go: 'halfre', cat: 'all', list: half, top: lab });
       var under1 = reAll.filter(function (i) { return i.cat === 'home' && i.min <= 1e8; }).sort(function (a, b) { return score(b) - score(a); }).slice(0, 40);
-      if (under1.length) reS.push({ title: '1억 이하로 시작하는 집', sub: '아파트·주택', go: 'top', cat: 'home', list: under1, top: lab });
+      if (under1.length) reS.push({ title: '1억 이하로 시작하는 집', sub: '아파트·주택', go: 'under1', cat: 'all', list: under1, top: lab });
       var metro = reAll.filter(function (i) { return /서울|경기|인천/.test(i.sd) && (i.cat === 'home' || i.cat === 'shop') && i.rate != null && i.rate <= 80; }).sort(function (a, b) { return a.rate - b.rate; }).slice(0, 40);
-      if (metro.length) reS.push({ title: '수도권 집·상가, 감정가 80% 이하', sub: '서울·경기·인천', go: 'top', cat: 'home', list: metro, top: function (i) { return '<span class="badge">' + esc(shortSido(i.sd)) + '</span>'; } });
+      if (metro.length) reS.push({ title: '수도권 집·상가, 감정가 80% 이하', sub: '서울·경기·인천', go: 'metro', cat: 'all', list: metro, top: function (i) { return '<span class="badge">' + esc(shortSido(i.sd)) + '</span>'; } });
       var mk = reAll.filter(isCheap).sort(function (a, b) { return a.mkt.ratio - b.mkt.ratio; }).slice(0, 40);
-      if (mk.length) reS.push({ title: '같은 단지 실거래가보다 낮게 시작하는 아파트', sub: '실거래가 비교', go: 'top', cat: 'home', list: mk, top: function (i) { return '<span class="badge badge-blue">시세의 ' + i.mkt.ratio + '%</span>'; } });
+      if (mk.length) reS.push({ title: '같은 단지 실거래가보다 낮게 시작하는 아파트', sub: '실거래가 비교', go: 'cheap', cat: 'all', list: mk, top: function (i) { return '<span class="badge badge-blue">시세의 ' + i.mkt.ratio + '%</span>'; } });
       reS.forEach(function (x) { x.re = true; });
       var mixed = [], gi = 0, ri = 0;
       while (gi < shelves.length || ri < reS.length) { if (gi < shelves.length) mixed.push(shelves[gi++]); if (ri < reS.length) mixed.push(reS[ri++]); }
@@ -653,7 +695,7 @@
     var cards = [];
     if (cars.length) cards.push(['오늘 가장 비싼 차', won(cars[0].min), cars[0].t, cars[0]]);
     if (cars.length > 1) cards.push(['오늘 가장 싼 차', won(cars[cars.length - 1].min), cars[cars.length - 1].t, cars[cars.length - 1]]);
-    if (cars.length > 1 && cars[cars.length - 1].min > 0) cards.push(['같은 돈이면?', Math.round(cars[0].min / cars[cars.length - 1].min) + '대', cars[0].t + ' 시작가로 ' + cars[cars.length - 1].t + '를 살 수 있는 수 (시작가 기준)', null]);
+    if (cars.length > 1 && cars[cars.length - 1].min > 0) cards.push(['같은 돈이면?', Math.round(cars[0].min / cars[cars.length - 1].min) + '대', cars[0].t + ' 1대 시작가면 ' + eulReul(cars[cars.length - 1].t) + ' ' + Math.round(cars[0].min / cars[cars.length - 1].min) + '대 살 수 있어요 (시작가 기준)', null]);
     var newN = real.filter(function (i) { return i.isNew; }).length;
     cards.push(['새로 들어온 물건', newN + '점', '최근 48시간', null, 'new']);
     var smallN = real.filter(cheapOdd).length;
@@ -736,7 +778,7 @@
     if (cond) {
       var n = data.items.filter(function (i) { return matchesCond(i, cond); }).length;
       $('condSummary').textContent = condText(cond) + ' — 맞는 물건이 지금 ' + n + '건 있어요. 다음에 들어오면 새로 올라온 물건을 위에 알려드릴게요.';
-      var fresh = data.items.filter(function (i) { return matchesCond(i, cond) && i.st && new Date(i.st).getTime() > (cond.seen || 0); });
+      var fresh = data.items.filter(function (i) { return matchesCond(i, cond) && !notStarted(i) && i.st && new Date(i.st).getTime() > (cond.seen || 0); });
       if (fresh.length && !noticeShown) {
         $('condNotice').innerHTML = '<span>맞춤 조건에 맞는 <b>새 물건 ' + fresh.length + '건</b>이 올라왔어요.</span><button id="condGo">보기</button>';
         $('condNotice').hidden = false;
@@ -752,7 +794,10 @@
   });
   var fb = document.getElementById('findBtn');
   if (fb) fb.addEventListener('click', function () { st.q = $('q').value; st.tab = 'top'; st.cat = 'all'; st.shown = PAGE; render(); $('tabs').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
-  function go(tab) { st.tab = tab; st.shown = PAGE; render(); $('tabs').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  function go(tab, keep) {
+    // 다른 목록으로 갈 때는 이전 검색어·지역·종류 필터를 지워서, 버튼이 약속한 목록 그대로 보여줘요
+    if (!keep) { st.q = ''; st.sido = ''; if ($('q')) $('q').value = ''; if ($('sido')) $('sido').value = ''; }
+    st.tab = tab; st.shown = PAGE; render(); $('tabs').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
   document.addEventListener('click', function (e) {
     var b = e.target.closest('button,[data-go]');
     if (!b) return;
@@ -771,7 +816,7 @@
     if (ds.tab) { st.tab = ds.tab; st.shown = PAGE; render(); }
     else if (ds.cat) { st.cat = ds.cat; st.shown = PAGE; render(); }
     else if (ds.circle) { st.cat = ds.circle; st.tab = 'top'; st.shown = PAGE; render(); $('tabs').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
-    else if (ds.go) { e.preventDefault(); if (ds.gocat) st.cat = ds.gocat; go(ds.go); }
+    else if (ds.go) { e.preventDefault(); st.cat = ds.gocat || 'all'; go(ds.go); }
     else if (ds.like) {
       if (liked[ds.like]) delete liked[ds.like]; else { liked[ds.like] = Date.now(); toast('관심 물건에 담았어요.'); }
       store.set('ar_liked', liked); render();
@@ -783,7 +828,7 @@
       else if (w === '명품') { st.q = ''; st.cat = 'gL'; st.tab = 'top'; }
       else if (w === '100만원 이하') { st.q = ''; st.cat = 'all'; st.tab = 'cheapodd'; }
       else { st.q = w; st.tab = 'top'; st.cat = 'all'; }
-      $('q').value = st.q; st.shown = PAGE; go(st.tab);
+      $('q').value = st.q; st.shown = PAGE; go(st.tab, true);
     } else if (ds.csido) {
       var i = draft.sidos.indexOf(ds.csido);
       if (i === -1) draft.sidos.push(ds.csido); else draft.sidos.splice(i, 1);
@@ -837,8 +882,9 @@
   // ---------- 시작 ----------
   var params = new URLSearchParams(location.search);
   if (params.get('tab')) st.tab = params.get('tab');
-  if (params.get('cat')) st.cat = params.get('cat');
   else if (cond) st.tab = 'cond';
+  if (params.get('cat')) st.cat = params.get('cat');
+  if (params.get('q')) st.q = params.get('q');
   var isGx = function (i) { return i.cat === 'goods' || i.cat === 'car'; };
   function setData(d) {
     d.items = d.items.filter(function (i) { return !(i.en && new Date(i.en).getTime() < Date.now()); });
@@ -868,6 +914,9 @@
       store.set('ar_liked', liked);
       shownPickId = keepPick;
       render(); renderCircles();
+      // 전체 목록이 오면 부동산 진열과 카드도 다시 채워요 (첫 화면 데이터에 없던 물건 반영)
+      var closing2 = data.items.filter(function (i) { return hoursLeft(i) <= 48 && hoursLeft(i) > 0; });
+      renderShelves(closing2); var rd = document.getElementById('reDeals'); if (rd) rd.hidden = true; renderDeals();
     }).catch(function () { /* 전체 목록을 못 받아도 첫 화면은 그대로 */ });
     else {
       var ids = {}; d.items.forEach(function (i) { ids[i.id] = 1; });

@@ -129,7 +129,7 @@ function clean(o) {
   for (const [k, v] of Object.entries(o)) {
     if (v == null) continue;
     const t = typeof v === 'number' ? v : String(v).trim();
-    if (t === '' || t === 0 || /^(-|없음|미상|해당없음|N\/A|null)$/i.test(String(t))) continue;
+    if (t === '' || t === 0 || /^(-|없음|미상|불상|해당없음|사진\s*참고|N\/A|null)$/i.test(String(t))) continue;
     out[k] = t;
   }
   return Object.keys(out).length ? out : undefined;
@@ -153,6 +153,24 @@ const SD_SHORT = (sd) => String(sd || '').replace(/특별자치시|특별자치�
   .replace(/^충청북도$/, '충북').replace(/^충청남도$/, '충남').replace(/^전라북도$|^전북$/, '전북').replace(/^전라남도$/, '전남')
   .replace(/^경상북도$/, '경북').replace(/^경상남도$/, '경남').replace(/도$/, '');
 // 주소만 있는 물건명을 '부산 서구 아미동2가 대지 281㎡'처럼 읽기 쉬운 이름으로
+// 차 이름 다듬기: 제조사 표기 통일, '기타 국내제조사' 같은 말·영문 중복·형식번호 빼기
+const MAKER = { 현대자동차: '현대', '현대자동차(주)': '현대', 기아자동차: '기아', 기아: '기아', 한국지엠: '쉐보레', 'GM대우': '쉐보레', 쉐보레GM: '쉐보레', 르노삼성: '르노', 르노코리아: '르노', 쌍용자동차: 'KG모빌리티', 쌍용: 'KG모빌리티', 'Mercedes-Benz': '벤츠', 메르세데스벤츠: '벤츠', 'BMW': 'BMW' };
+const UNKNOWN = /^(기타|없음|미상|불상|기타\s*(국내|해외)?\s*제조사|모델명?\s*불상|사진\s*참고)$/;
+function carName(makerRaw, modelRaw, yearRaw, useRaw) {
+  let mk = String(makerRaw || '').trim();
+  mk = MAKER[mk] || mk.replace(/자동차$|\(주\)|㈜/g, '').trim();
+  if (UNKNOWN.test(mk)) mk = '';
+  let md = String(modelRaw || '').replace(/\s+/g, ' ').trim();
+  md = md.replace(/Mercedes-Benz|메르세데스[-\s]?벤츠/gi, '').replace(/\(([A-Za-z\s\-]+)\)/g, (m, x) => (/[가-힣]/.test(md.replace(m, '')) ? '' : ` ${x}`))
+    .replace(/\([^)]*\d[^)]*-[^)]*\)/g, '').replace(/^(기타\s*(국내|해외)?\s*제조사)\s*/, '').replace(/\s+/g, ' ').trim();
+  if (UNKNOWN.test(md) || /불상|미상/.test(md)) md = '';
+  if (mk && md.toLowerCase().includes(mk.toLowerCase())) mk = '';
+  if (mk === '벤츠' && /벤츠/.test(md)) mk = '';
+  const y = (String(yearRaw || '').match(/(19|20)\d{2}/) || [])[0];
+  const kind = String(useRaw || '').split(/[·\/,\s]/).filter(Boolean).pop() || '';
+  if (!md) return { name: `${kind || '차종'} (모델은 원문 확인)`, model: '', year: y || '', unknown: true };
+  return { name: [mk, md, y ? `${y}년식` : ''].filter(Boolean).join(' '), model: [mk, md].filter(Boolean).join(' '), year: y || '', unknown: false };
+}
 function friendlyTitle(r, cat, land, bld) {
   const orig = (r.onbidCltrNm || '').replace(/\s+/g, ' ').trim();
   if (cat === 'goods') {
@@ -166,11 +184,8 @@ function friendlyTitle(r, cat, land, bld) {
     return out.length >= 2 ? out : orig;
   }
   if (cat === 'car' && (r.carMdlNm || r.carVhknNm)) {
-    // 공고의 차종·모델·연식 칸을 그대로 써요 (가장 정확)
-    const model = String(r.carMdlNm || r.carVhknNm).replace(/\s+/g, ' ').trim();
-    const mk = String(r.cltrMkrNm || '').trim();
-    const y = (String(r.yrmdl || '').match(/(19|20)\d{2}/) || [])[0];
-    return [mk && !model.includes(mk) && !/^(기타|없음)$/.test(mk) ? mk : '', model, y ? `${y}년식` : ''].filter(Boolean).join(' ');
+    // 공고의 차종·모델·연식 칸으로 (가장 정확)
+    return carName(r.cltrMkrNm, r.carMdlNm || r.carVhknNm, r.yrmdl, r.cltrUsgSclsCtgrNm).name;
   }
   if (cat === 'car') {
     // 보관 장소 주소, 차량번호, 차대번호는 빼고 차종·연식만 남겨요
@@ -182,7 +197,10 @@ function friendlyTitle(r, cat, land, bld) {
     const seenW = new Set();
     t = t.split(' ').filter((w) => { const k = w.toLowerCase(); if (seenW.has(k)) return false; seenW.add(k); return true; }).join(' ');
     // 주소만 남으면 차종을 알 수 없다고 표시
-    if (/^(서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충청|충북|충남|전라|전북|전남|경상|경북|경남|제주)/.test(t) || !/[A-Za-z가-힣]{2,}/.test(t.replace(/(19|20)\d{2}년식/, ''))) return '차종 미상 차량 (원문 확인)';
+    if (/^(서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충청|충북|충남|전라|전북|전남|경상|경북|경남|제주)/.test(t) || !/[A-Za-z가-힣]{2,}/.test(t.replace(/(19|20)\d{2}년식/, ''))) {
+      const kind = String(r.cltrUsgSclsCtgrNm || '').split(/[·\/,\s]/).filter(Boolean).pop();
+      return `${kind || '차종'} (모델은 원문 확인)`;
+    }
     const y = (t.match(/(19|20)\d{2}\s*(년식|년)?/) || [])[0];
     if (y) t = `${t.replace(y, ' ').replace(/\s+/g, ' ').trim()} ${y.replace(/\s*(년식|년)$/, '')}년식`;
     return t.length >= 2 ? t : orig;
@@ -194,10 +212,19 @@ function friendlyTitle(r, cat, land, bld) {
   const area = bld ? bld : land;
   // 원래 이름에 단지명·건물명 같은 고유 이름이 있으면 살려요
   const rest = orig.replace(String(r.lctnSdnm || ''), '').replace(String(r.lctnSggnm || ''), '').replace(String(r.lctnEmdNm || ''), '')
+    .replace(/[가-힣]+\d+(동|가)(?=[\s,]|$)/g, ' ').replace(/\S*\d+번?길(\s*\d+(-\d+)?)?/g, ' ').replace(/\S+(로|길)\s+\d+(-\d+)?/g, ' ')
     .replace(/제?\s*(지하|B|비)?\s*[\d\-]*\s*(층|호실|호|동|번지|필지)\]?/g, ' ').replace(/\d+\s*(차|단지|블럭|블록)/g, ' ')
     .replace(/[\d\-,~()\[\]]+/g, ' ').replace(/\s+/g, ' ').trim();
-  const named = /[가-힣A-Za-z]{2,}/.test(rest) && !/^(대|전|답|임야|도로|잡종지|구거)$/.test(rest) ? rest.split(' ').filter((w) => /[가-힣A-Za-z]{2,}/.test(w) && !/^[가-힣]{1,3}(리|읍|면|동)$/.test(w) && !/^(외|지상|지하|토지|건물|제|제지|제비|제씨|지층|매각|일괄|토지및건물|개호실|호실|단지|차|동비)$/.test(w) && !/(특별시|광역시|특별자치|도|시|군|구)$/.test(w) && w.length >= 2).slice(0, 2).join(' ') : '';
-  const parts = [region, named || kind, area ? `${Math.round(area * 10) / 10}㎡` : ''].filter(Boolean);
+  const SIDO_W = /^(서울|부산|대구|인천|광주|대전|울산|세종|경기|강원|충북|충남|전북|전남|경북|경남|제주|충청|전라|경상)(특별시|광역시|특별자치시|특별자치도|도|북도|남도)?$/;
+  const named = /[가-힣A-Za-z]{2,}/.test(rest) && !/^(대|전|답|임야|도로|잡종지|구거)$/.test(rest) ? rest.split(' ').filter((w) => /[가-힣A-Za-z]{2,}/.test(w) && !/^[가-힣]{1,3}(리|읍|면|동)$/.test(w) && !/^(외|지상|지하|토지|건물|제|제지|제비|제씨|지층|매각|일괄|토지및건물|개호실|호실|단지|차|동비)$/.test(w) && !/(특별시|광역시|특별자치|도|시|군|구)$/.test(w) && !SIDO_W.test(w) && !/^제[가-힣A-Za-z]{1,2}$/.test(w) && !/^(일원|내|번길|공개매각|업무용부|내제조표)$/.test(w) && !/^[가-힣]{2,}(대로|로|길)$/.test(w) && w.length >= 2)
+    .filter((w, i, arr) => arr.indexOf(w) === i).slice(0, 2).join(' ') : '';
+  // 같은 건물의 다른 호수를 구별할 수 있게 동·호를 뒤에 붙여요
+  const unit = (orig.match(/(\d+)\s*동\s*(?:제?\s*(?:지하)?\s*\d+\s*층\s*)?제?\s*(?:비|B)?\s*(\d+)\s*호(?!실)/) || []);
+  const ho = unit[2] ? `${unit[1]}동 ${unit[2]}호` : ((orig.match(/제?\s*(?:비|B)?\s*(\d{2,5})\s*호(?!실)/) || [])[1] ? `${orig.match(/제?\s*(?:비|B)?\s*(\d{2,5})\s*호(?!실)/)[1]}호` : '');
+  let nm = named || kind;
+  if (nm && kind && nm !== kind && nm.endsWith(kind)) nm = nm; // 예: '○○아파트'
+  nm = nm.replace(/(아파트)\s+아파트$/, '$1');
+  const parts = [region, nm, ho, area ? `${Math.round(area * 10) / 10}㎡` : ''].filter(Boolean);
   return parts.length >= 2 ? parts.join(' ') : orig;
 }
 
@@ -209,7 +236,7 @@ function subOf(r, cat) {
   const name = String(r.onbidCltrNm || '').replace(/\(주\)|㈜|주식회사|유한회사|농업회사법인|농협|수협|축협/g, ' ');
   const m = `${use} ${name}`;
   const HEAVY = /굴삭기|굴착기|포크레인|크레인|지게차|선박|보트|요트|트랙터|콤바인|이앙기|구보타|덤프|로더|불도저/;
-  if (cat === 'car') return /^(중기|선박|항공)/.test(use) || HEAVY.test(m) ? 'heavy' : 'car';
+  if (cat === 'car') return /^(중기|선박|항공)/.test(use) || HEAVY.test(m) ? 'heavy' : /이륜|오토바이|스쿠터/.test(m) ? 'bike' : 'car';
   if (/^(유가증권|NPL|무형자산|회원권)/.test(use) || /비상장|주권|보통주|우선주|출자증권|출자금|주식\s*[\d,]+\s*주|[\d,]+\s*주\b|채권|NPL|특허|상표권|저작권|디자인권|회원권|지분/.test(m)) return 'right';
   if (/재고|원자재|원단|자재|농산물|수산물|축산물|주류|폐기물|고철|잡철|비철|재활용|플라스틱|파지|캔류|PET|EPS|파병|입목|임산물|벌채|생산물|부산물|맥류|암매각/.test(m)) return 'stock';
   // ① 물건 이름으로 먼저 판단 (용도 칸은 '시계/귀금속'처럼 넓게 묶여 있어 마지막에 봐요)
@@ -367,10 +394,14 @@ function attachMarket(items, trades, months) {
     const code = it.pnu.slice(0, 5);
     const pool = months.flatMap((ym) => trades[`${code}:${ym}`] || []);
     const tol = Math.max(3, it.bld * 0.07);
-    const nameKey = aptKey(it.addr);
+    // 주소의 시·구·동 이름은 빼고 단지 이름끼리만 비교해요 (예: '태평동'이 '태평' 단지와 섞이지 않게)
+    const stem = (w) => String(w || '').replace(/(특별시|광역시|특별자치시|특별자치도|도|시|군|구|읍|면|동|가|리)$/, '');
+    let addrN = String(it.addr || '');
+    for (const w of [it.sd, it.sgg, it.emd, stem(it.emd), stem(it.sgg)]) if (w) addrN = addrN.split(w).join(' ');
+    const nameKey = aptKey(addrN);
     const near = pool.filter((t) => {
       const k = aptKey(t.apt);
-      return t.emd === it.emd && t.area && Math.abs(t.area - it.bld) <= tol && k.length >= 2 && nameKey.includes(k);
+      return t.emd === it.emd && t.area && Math.abs(t.area - it.bld) <= tol && k.length >= 2 && k !== aptKey(stem(it.emd)) && nameKey.includes(k);
     });
     if (near.length < 2) continue;
     const med = median(near.map((t) => t.price));
@@ -512,10 +543,10 @@ function keywordOf(it) {
   let t = it.t;
   const sp = it.spec || {};
   if (it.cat === 'car' && sp.model) {
-    const y = String(sp.year || '').match(/(19|20)\d{2}/)?.[0] || ((t.match(/(19|20)\d{2}(?=년식)/) || [])[0] || '');
-    const model = [sp.maker && !String(sp.model).includes(sp.maker) ? sp.maker : '', sp.model].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
-    return { kw: [model, y].filter(Boolean).join(' ').slice(0, 30), model, year: y, generic: model.length < 2 };
+    const c = carName(sp.maker, sp.model, sp.year, it.use);
+    return { kw: [c.model, c.year].filter(Boolean).join(' ').slice(0, 30), model: c.model, year: c.year, generic: c.unknown || c.model.length < 2 };
   }
+  if (it.cat === 'car' && /원문 확인|미상|불상/.test(t)) return { kw: '', model: '', year: '', generic: true };
   // 공고에 모델명이 따로 있으면 그게 가장 정확해요
   const mdl = String(sp.model || '').trim();
   if (it.cat === 'goods' && mdl && /[A-Za-z0-9]{3,}/.test(mdl) && !/^(없음|미상|기타)$/.test(mdl)) {
@@ -729,7 +760,7 @@ function won(v) {
   return `${man.toLocaleString('ko-KR')}만원`;
 }
 const CAT_NAME = { home: '아파트·주택', shop: '상가·업무', land: '토지', etc: '기타 부동산', goods: '동산', car: '차량' };
-const SUB_NAME = { right: '주식·채권·권리', gold: '귀금속·금', luxury: '명품·시계', elec: '전자제품', machine: '기계·장비', living: '가구·생활', stock: '재고·원자재', goods_etc: '기타 동산', car: '자동차', heavy: '중장비·선박' };
+const SUB_NAME = { right: '주식·채권·권리', gold: '귀금속·금', luxury: '명품·시계', elec: '전자제품', machine: '기계·장비', living: '가구·생활', stock: '재고·원자재', goods_etc: '기타 동산', car: '자동차', bike: '오토바이', heavy: '중장비·선박' };
 const catName = (it) => SUB_NAME[it.sub] || CAT_NAME[it.cat];
 const kdate = (iso) => {
   if (!iso) return '-';
@@ -763,7 +794,8 @@ function placeOf(it) {
 
 function plainSummary(it) {
   const parts = [];
-  if (it.appr && it.min) parts.push(`감정가보다 ${won(it.appr - it.min)} 싸게 시작해요`);
+  if (it.appr && it.min && it.appr > it.min) parts.push(`감정가보다 ${won(it.appr - it.min)} 싸게 시작해요`);
+  else if (it.appr && it.min && it.appr === it.min) parts.push('감정가 그대로 시작해요');
   if (it.fails) parts.push(`지금까지 ${it.fails}번 팔리지 않았어요`);
   if (it.mkt && !isTrap(it)) parts.push(`같은 단지 실거래 중간값의 ${it.mkt.ratio}% 수준이에요`);
   return parts.length ? `한 줄 요약: ${parts.join(', ')}.` : '';
@@ -867,15 +899,17 @@ const GUIDE_NOTE = {
   machine: ['쓸 곳이 정해져 있어야 해요', '기계·장비는 사 줄 사람을 찾기 어렵고 운반·설치비가 들어요. 직접 쓸 계획이 없다면 최저가 근처가 무난해요.', 1],
   living: ['운반비와 상태를 감안해요', '가구·생활용품은 중고 값이 낮고 운반비가 들어요. 최저가 근처에서 시작하는 게 무난해요.', 1]
 };
+// 차량(자동차·오토바이)과 중장비·선박을 구분해요
+const isCarIt = (it) => it.cat === 'car' && it.sub !== 'heavy';
 function goodsGuide(it, kw) {
   if (!it.min) return null;
-  const note = GUIDE_NOTE[it.cat === 'car' ? 'car' : it.sub] || ['상태를 사진으로만 봐요', '동산은 미리 실물을 보기 어렵고 반품이 안 돼요. 그만큼 낮춰 쓰는 게 안전해요.', 1];
+  const note = GUIDE_NOTE[isCarIt(it) ? 'car' : it.sub] || ['상태를 사진으로만 봐요', '동산은 미리 실물을 보기 어렵고 반품이 안 돼요. 그만큼 낮춰 쓰는 게 안전해요.', 1];
   const lines = [];
   lines.push({ k: 'min', label: '최저 입찰가', v: it.min, sub: '이보다 낮게는 입찰할 수 없어요' });
   let mid = null;
   if (it.gr && it.appr) {
     mid = Math.round(it.appr * it.gr.med / 100 / 1e4) * 1e4;
-    lines.push({ k: 'gr', label: '비슷한 물건 실제 낙찰 수준', v: mid, sub: `최근 2주 ${it.gr.same ? `같은 종류(${SUB_NAME[it.sub] || CAT_NAME[it.cat]})` : (it.cat === 'car' ? '차량' : '동산')} 낙찰 ${it.gr.n}건은 감정가의 ${it.gr.lo}~${it.gr.hi}%(중간 ${it.gr.med}%)에 팔렸어요` });
+    lines.push({ k: 'gr', label: '비슷한 물건 실제 낙찰 수준', v: mid, sub: `최근 2주 ${it.gr.same ? `같은 종류(${SUB_NAME[it.sub] || CAT_NAME[it.cat]})` : (isCarIt(it) ? '차량' : '동산')} 낙찰 ${it.gr.n}건은 감정가의 ${it.gr.lo}~${it.gr.hi}%(중간 ${it.gr.med}%)에 팔렸어요` });
   }
   const conf = it.cat === 'car' ? false : (!!kw?.code || it.sub === 'gold');
   if (it.newp && conf) lines.push({ k: 'new', label: '새 제품 가격', v: it.newp, sub: '네이버 쇼핑 같은 제품번호 최저가 기준' });
@@ -883,26 +917,32 @@ function goodsGuide(it, kw) {
   // 상한: 감정가, (새 제품 가격 × 기준 비율), 차량은 이전등록비 7%를 뺀 값
   let cap = it.appr || null;
   if (it.newp && conf && note[2] < 1) cap = Math.min(cap || Infinity, it.newp * note[2]);
-  if (it.cat === 'car' && cap) cap = cap / 1.07;
-  let lo = it.min, hi = cap ? Math.max(it.min, cap) : null;
-  if (mid) { lo = Math.max(it.min, Math.round(it.appr * it.gr.lo / 100)); hi = hi ? Math.min(hi, Math.max(lo, Math.round(it.appr * it.gr.hi / 100))) : Math.round(it.appr * it.gr.hi / 100); }
+  if (isCarIt(it) && cap) cap = cap / 1.07;
+  let lo = it.min, hi = cap ? Math.max(it.min, cap) : null, hot = false;
+  if (mid) {
+    const gLo = Math.round(it.appr * it.gr.lo / 100), gHi = Math.round(it.appr * it.gr.hi / 100);
+    // 비슷한 물건이 감정가(상한)보다 비싸게 팔렸어도 상한을 넘겨 권하지 않아요
+    if (cap && gLo > cap) { hot = true; lo = it.min; hi = Math.max(it.min, cap); }
+    else { lo = Math.max(it.min, gLo); hi = hi ? Math.min(hi, Math.max(lo, gHi)) : gHi; }
+  }
   if (hi && hi < lo) hi = lo;
   const r10 = (v) => (v == null ? null : Math.round(v / 1e4) * 1e4);
-  return { lines, lo: r10(lo), hi: r10(hi), note, carFee: it.cat === 'car', capUsed: !!(it.newp && conf && note[2] < 1) };
+  return { lines, lo: r10(lo), hi: r10(hi), note, hot, carFee: isCarIt(it), capUsed: !!(it.newp && conf && note[2] < 1) };
 }
 
 // 동산·차량 전용 카드: 물건 카드, 받아 오는 방법, 꼭 확인할 것
 function goodsCards(it, kw, place) {
-  const isCar = it.cat === 'car';
+  const isCar = isCarIt(it);
+  const heavy = it.sub === 'heavy';
   const sp = it.spec || {};
   const n = (v) => Number(v).toLocaleString('ko-KR');
   const facts = (isCar
-    ? [['차종', kw.model], ['연식', kw.year ? `${kw.year}년식` : '공고문 확인'], ['주행거리', sp.km ? `${n(sp.km)}km` : ''], ['연료', sp.fuel], ['배기량', sp.cc ? `${n(sp.cc)}cc` : ''], ['색상', sp.color], ['보관 장소', sp.place || place || '공고문 확인']]
-    : [['종류', catName(it)], ['제조사', sp.maker], ['모델명·제품번호', kw.code || sp.model || '공고에 없음 (원문 사진에서 확인)'], ['제조 연도', sp.year], ['수량', sp.qty], ['크기', sp.size], ['무게', sp.weight], ['작가', sp.author], ['원산지', sp.origin], ['보관 장소', sp.place || place || '공고문 확인']])
+    ? [['차종', kw.model], ['연식', kw.year ? `${kw.year}년식` : '공고문 확인'], ['주행거리', sp.km ? `${n(sp.km)}km` : ''], ['연료', sp.fuel], ['배기량', sp.cc ? `${n(sp.cc)}cc` : ''], ['색상', sp.color], ['보관 장소', sp.place || place || [it.sd, it.sgg, it.emd].filter(Boolean).join(' ') || '공고문 확인']]
+    : [['종류', catName(it)], ['제조사', sp.maker], ['모델명·제품번호', kw.code || sp.model || '공고에 없음 (원문 사진에서 확인)'], ['제조 연도', sp.year], ['수량', sp.qty], ['크기', sp.size], ['무게', sp.weight], ['작가', sp.author], ['원산지', sp.origin], ['보관 장소', sp.place || place || [it.sd, it.sgg, it.emd].filter(Boolean).join(' ') || '공고문 확인']])
     .filter((f) => f[1]);
   const auth = { luxury: '명품', gold: '귀금속', elec: '전자제품' }[it.sub];
   return `<section class="card-block">
-<h2>${isCar ? '차량 카드' : '물건 카드'}</h2>
+<h2>${isCar ? '차량 카드' : heavy ? '장비 카드' : '물건 카드'}</h2>
 <dl class="info">${facts.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>
 <p class="note">${Object.keys(sp).length ? '온비드 공고에 적힌 정보예요.' : '공고 제목에서 뽑은 정보예요.'} 상태·구성품·${isCar ? '주행거리' : '보증서'}는 온비드 원문의 사진과 상세 설명에서 확인하세요.</p>
 </section>
@@ -911,7 +951,7 @@ function goodsCards(it, kw, place) {
 <ul class="facts">${(isCar ? [
     ['사고·침수 이력', '카히스토리(보험개발원)에서 차량번호로 조회할 수 있어요. 차량번호는 온비드 원문에서 확인하세요.'],
     ['압류·저당', '공매로 팔린 차는 보통 압류·저당이 말소되지만, 공고문의 말소 조건을 꼭 확인하세요.'],
-    ['이전등록', '낙찰 후 직접 이전등록을 해야 하고 취득세 등이 들어요. 아래 계산기에 반영돼 있어요.'],
+    ['이전등록', '낙찰 후 직접 이전등록을 해야 하고 취득세 등(차량가의 약 7%)이 들어요. 가이드 입찰가와 돈 계획에 반영해 두었어요.'],
     ['차 상태', '시동·열쇠·서류 유무는 공고마다 달라요. 보관소에 미리 문의할 수 있는지 공고문을 보세요.']
   ] : [
     ['직접 받아 오기', `대부분 낙찰자가 보관 장소${place ? `(${place})` : ''}에서 직접 받아 와요. 택배로 보내 주지 않는 경우가 많아요.`],
@@ -926,11 +966,11 @@ let ASSET_V = '';
 function itemPage(it, trades, similar, demo, updatedAt) {
   const risks = risksOf(it);
   const G = it.cat === 'goods' || it.cat === 'car';
-  const isCar = it.cat === 'car';
+  const isCar = isCarIt(it);
   const kw = G ? keywordOf(it) : null;
   const place = G ? placeOf(it) : '';
   const region = [it.sd, it.sgg, it.emd].filter(Boolean).join(' ');
-  const title = `${won(it.min)}부터 · ${it.t}${it.rate && it.rate < 100 ? ` (감정가의 ${it.rate}%)` : ''}`;
+  const title = it.min ? `${won(it.min)}부터 · ${it.t}${it.rate && it.rate < 100 ? ` (감정가의 ${it.rate}%)` : ''}` : `${it.t} (최저가 비공개)`;
   const desc = `${region} ${CAT_NAME[it.cat]} 공매 물건. 감정가 ${won(it.appr)}, 최저입찰가 ${won(it.min)}, 유찰 ${it.fails}회, 입찰 마감 ${kdate(it.en)}.`;
   const canonical = SITE ? `${SITE}/item/${it.id}.html` : '';
   const rows = [
@@ -966,7 +1006,7 @@ ${it.og ? '<meta property="og:image:width" content="1200"><meta property="og:ima
 <div class="app">
 <div class="topbar">
 <a class="icon-btn" href="../${G ? 'index' : 'realestate'}.html" aria-label="목록으로"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></a>
-<span class="topbar-title">${G ? (isCar ? '차량 공매' : '동산 공매') : '부동산 공매'}</span>
+<span class="topbar-title">${G ? (it.sub === 'heavy' ? '중장비 공매' : isCar ? '차량 공매' : '동산 공매') : '부동산 공매'}</span>
 <span class="topbar-actions">
 <button class="icon-btn" id="share" aria-label="공유하기"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg></button>
 <button class="icon-btn like-btn" id="like" aria-label="관심 등록" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg></button>
@@ -1001,13 +1041,13 @@ ${it.rate ? `<span class="rate-pill ${it.rate <= 50 && !isTrap(it) ? 'hot' : ''}
 </div>
 <div class="grid2">
 <div><span class="muted small">감정가</span><b>${it.appr ? won(it.appr) : '비공개'}</b></div>
-<div><span class="muted small">감정가보다</span><b class="orange">${it.appr && it.min ? won(it.appr - it.min) + ' 낮음' : '-'}</b></div>
+<div><span class="muted small">감정가보다</span><b class="orange">${it.appr && it.min ? (it.appr > it.min ? won(it.appr - it.min) + ' 낮음' : it.appr === it.min ? '감정가 그대로' : won(it.min - it.appr) + ' 높음') : '-'}</b></div>
 <div><span class="muted small">입찰 기간</span><b>${kdate(it.st)} ~ ${kdate(it.en)}</b></div>
 <div><span class="muted small">마감까지</span><b class="red" id="countdown">-</b></div>
 </div>
 </div>
 ${it.next && it.next.length ? `<div class="next-rounds"><b>다음 회차 일정</b>${it.next.map((n) => `<span>${esc(kdate(n.en))} 마감 · 최저 ${won(n.min)}${n.rate ? ` (${n.rate}%)` : ''}</span>`).join('')}<small>이번에 안 팔리면 이 일정으로 다시 나와요. 값이 내려가는 만큼 경쟁도 생길 수 있어요.</small></div>` : ''}
-<p class="plain">${G && it.appr && it.min ? `감정가 ${won(it.appr)}짜리가 <b>${won(it.min)}</b>부터 시작해요. ` : ''}${esc(plainSummary(it))}</p>
+<p class="plain">${G && it.appr && it.min && it.appr > it.min ? `감정가 ${won(it.appr)}짜리가 <b>${won(it.min)}</b>부터 시작해요. ` : ''}${esc(plainSummary(it))}</p>
 ${whyCard(it)}
 <details class="glossary"><summary>이 말이 무슨 뜻이에요?</summary>
 <dl>
@@ -1022,17 +1062,17 @@ ${G ? '<div><dt>인도</dt><dd>낙찰 뒤 대금을 다 내고 물건을 넘겨�
 ${G ? goodsCards(it, kw, place) : ''}
 
 ${isTrap(it) ? (G ? `<section class="card-block trap"><b>값이 많이 내려온 이유를 먼저 확인하세요</b><p class="muted small">감정가의 ${it.rate}%까지 내려온 물건이에요. 동산은 상태가 나쁘거나 등록·폐기·사용 제한 같은 조건이 붙어 있는 경우가 있어요. 공고문의 유의사항과 사진을 먼저 확인하세요.</p></section>` : `<section class="card-block trap"><b>숨은 조건 가능성이 큰 물건이에요</b><p class="muted small">값이 감정가보다 지나치게 낮거나 지분·토지만·건물만 파는 표현이 있어요. 이런 물건은 시세 비교와 낙찰가 예측이 맞지 않아 보여드리지 않아요. 공고문의 유의사항을 먼저 확인하세요.</p></section>`) : ''}
-${!G && !isTrap(it) && it.rr && it.appr ? `<section class="card-block">
+${!G && !isTrap(it) && it.rr && it.rr.n >= 5 && it.appr && it.min && it.appr * it.rr.med / 100 >= it.min ? `<section class="card-block">
 <h2>얼마에 낙찰될까?</h2>
 <p class="muted small">최근 2주 ${esc(it.sd)} ${esc(CAT_NAME[it.cat])} 공매 ${it.rr.n}건은 감정가의 <b>${it.rr.med}%</b>(중간값)에 낙찰됐어요.</p>
 <div class="compare">
 <div><span class="muted small">이 비율이면</span><b>${won(it.appr * it.rr.med / 100)}</b></div>
-<div><span class="muted small">최저가보다</span><b class="${it.min && it.appr * it.rr.med / 100 > it.min ? 'orange' : ''}">${it.min ? (it.appr * it.rr.med / 100 >= it.min ? won(it.appr * it.rr.med / 100 - it.min) + ' 높음' : '낮음') : '-'}</b></div>
+<div><span class="muted small">최저가보다</span><b class="orange">${won(it.appr * it.rr.med / 100 - it.min)} 높음</b></div>
 </div>
 <p class="note">같은 지역·종류의 최근 낙찰 결과 중간값이에요. 물건마다 사정이 달라 실제 낙찰가는 크게 다를 수 있어요.</p>
 </section>` : ''}
 
-${it.mkt && !isTrap(it) ? `<section class="card-block">
+${it.mkt && !isTrap(it) ? `<section class="card-block" id="mktSec">
 <h2>같은 단지 시세와 비교</h2>
 <p class="muted small">같은 단지(${esc(it.mkt.apt || it.emd)}) 비슷한 면적(${it.bld}㎡ 안팎)의 최근 3개월 실거래 ${it.mkt.n}건 기준이에요.</p>
 <div class="compare">
@@ -1045,10 +1085,10 @@ ${it.mkt && !isTrap(it) ? `<section class="card-block">
 
 ${(it.cat === 'goods' || it.cat === 'car') && !['right', 'stock'].includes(it.sub) ? (() => {
   const k = keywordOf(it);
-  const isCar = it.cat === 'car';
+  const isCar = isCarIt(it);
   const usedQ = encodeURIComponent(isCar ? `${k.model} ${k.year ? k.year + '년식 ' : ''}중고차 시세` : `${k.kw} 중고 시세`);
   const newQ = encodeURIComponent(k.kw);
-  const confirmed = isCar ? !k.generic : (!!k.code || it.sub === 'gold');
+  const confirmed = it.cat === 'car' ? !k.generic : (!!k.code || it.sub === 'gold');
   return `<section class="card-block">
 <h2>시장에선 얼마일까?</h2>
 ${confirmed ? `<p class="muted small">${isCar ? '공고의 차종·연식으로 찾았어요' : it.sub === 'gold' && !k.code ? '공고의 품목·중량으로 찾았어요' : '공고에 적힌 제품번호로 찾았어요'}: <b>${esc(isCar ? `${k.model}${k.year ? ' · ' + k.year + '년식' : ''}` : k.kw)}</b></p>
@@ -1071,7 +1111,7 @@ ${isCar ? '' : `<a class="btn-outline" href="https://search.shopping.naver.com/s
 
 <section class="card-block">
 <h2>위험 신호</h2>
-${risks.length ? `<ul class="risks">${risks.map(([h, d]) => `<li><b>${esc(h)}</b><span>${esc(d)}</span></li>`).join('')}</ul>` : `<p class="ok-line">데이터상 눈에 띄는 위험 신호는 없어요. 그래도 ${G ? '공고문의 물건 상태·인도 조건' : '공고문과 등기부'}는 꼭 확인하세요.</p>`}
+${risks.length ? `<ul class="risks">${risks.map(([h, d]) => `<li><b>${esc(h)}</b><span>${esc(d)}</span></li>`).join('')}</ul>` : `<p class="ok-line">데이터상 눈에 띄는 위험 신호는 없어요. 그래도 ${G ? '공고문의 물건 상태·인도 조건은' : '공고문과 등기부는'} 꼭 확인하세요.</p>`}
 </section>
 
 ${G ? (() => {
@@ -1080,10 +1120,10 @@ ${G ? (() => {
   const max = Math.max(...gd.lines.map((l) => l.v));
   return `<details class="card-block fold" id="maxbid" open>
 <summary><h2>얼마까지 쓰면 될까?</h2><span class="muted small">이 물건 기준 가이드</span></summary>
-<div class="guide-range"><span>가이드 입찰가</span><b>${won(gd.lo)}${gd.hi && gd.hi > gd.lo ? ` ~ ${won(gd.hi)}` : ''}</b><small>${gd.hi && gd.hi > gd.lo ? '이 범위 안에서 쓰는 걸 권해요' : '최저 입찰가 근처에서 쓰는 걸 권해요'}</small></div>
+<div class="guide-range"><span>가이드 입찰가</span><b>${won(gd.lo)}${gd.hi && gd.hi > gd.lo ? ` ~ ${won(gd.hi)}` : ''}</b><small>${gd.hot ? '비슷한 물건이 최근 감정가보다 높게 팔렸지만, 감정가를 넘겨 쓰는 건 권하지 않아요' : gd.hi && gd.hi > gd.lo ? '이 범위 안에서 쓰는 걸 권해요' : '최저 입찰가 근처에서 쓰는 걸 권해요'}</small></div>
 <ul class="ladder2">${gd.lines.sort((a, b) => a.v - b.v).map((l) => `<li class="l-${l.k}"><div class="ld-top"><span>${esc(l.label)}</span><b>${won(l.v)}</b></div><div class="ld-bar"><i style="width:${Math.max(4, Math.round(l.v / max * 100))}%"></i></div><small>${esc(l.sub)}</small></li>`).join('')}</ul>
 <div class="guide-why"><b>${esc(gd.note[0])}</b><p>${esc(gd.capUsed ? gd.note[1] : gd.note[1].replace(/\s*(그래서 )?새 제품 가격의 \d+%[^.]*\.\s*$/, ''))}</p></div>
-<p class="note">가이드는 최저 입찰가, 같은 종류 물건의 최근 낙찰가율, 새 제품 가격, 감정가로 계산한 참고값이에요. 낙찰이나 수익을 보장하지 않아요.${gd.carFee ? ' 차량은 이전등록비(약 7%)를 빼고 계산했어요.' : ''}</p>
+<p class="note">가이드는 최저 입찰가, 같은 종류 물건의 최근 낙찰가율, 새 제품 가격, 감정가로 계산한 참고값이에요. 낙찰이나 수익을 보장하지 않아요.${gd.carFee ? ' 차량은 이전등록비(약 7%)를 뺀 값을 상한으로 계산했어요.' : ''}</p>
 <script type="application/json" id="guide-data">${JSON.stringify({ lo: gd.lo, hi: gd.hi })}</script>`;
 })() : `<details class="card-block fold" id="maxbid" open>
 <summary><h2>얼마까지 써도 될까?</h2><span class="muted small">${G ? '시세만 넣으면 계산돼요' : '최대 입찰가 거꾸로 계산'}</span></summary>
@@ -1134,7 +1174,7 @@ ${similar.length ? `<section class="card-block no-pad-x"><h2 class="pad-x">비�
 </div>
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
-<script type="application/json" id="item-data">${JSON.stringify({ id: it.id, t: it.t, cat: it.cat, sub: it.sub || '', appr: it.appr, min: it.min, st: it.st, en: it.en, mkt: it.mkt || null, addr: ['goods', 'car'].includes(it.cat) ? '' : (it.addr || [it.sd, it.sgg, it.emd].filter(Boolean).join(' ')), place: placeOf(it), url: it.url }).replace(/</g, '\\u003c')}</script>
+<script type="application/json" id="item-data">${JSON.stringify({ id: it.id, t: it.t, cat: it.cat, sub: it.sub || '', appr: it.appr, min: it.min, st: it.st, en: it.en, mkt: it.mkt || null, trap: !!isTrap(it), addr: ['goods', 'car'].includes(it.cat) ? '' : (it.addr || [it.sd, it.sgg, it.emd].filter(Boolean).join(' ')), place: placeOf(it), url: it.url }).replace(/</g, '\\u003c')}</script>
 <script src="../item.js?v=${ASSET_V}" defer></script>
 </body>
 </html>`;
@@ -1317,7 +1357,8 @@ async function main() {
   {
     const soon = (it) => it.en && new Date(it.en).getTime() - now <= 48 * 3600e3 && new Date(it.en).getTime() > now;
     const gIds = new Set(slim.filter((x) => x.cat === 'goods' || x.cat === 'car').map((x) => x.id));
-    const reSlim = slim.filter((x) => !gIds.has(x.id));
+    const started = (x) => !x.st || new Date(x.st).getTime() <= now;
+    const reSlim = slim.filter((x) => !gIds.has(x.id)).sort((a, b) => started(b) - started(a));
     const pickRe = new Set([
       ...reSlim.slice(0, 300), ...reSlim.filter((x) => x.rank), ...reSlim.filter(soon).slice(0, 80),
       ...reSlim.filter((x) => x.rate != null && x.rate <= 60 && !x.trap).slice(0, 120), ...reSlim.filter((x) => x.mkt).slice(0, 60)
@@ -1351,7 +1392,9 @@ async function main() {
   for (const it of items) {
     const Gx = it.cat === 'goods' || it.cat === 'car';
     const same = (s) => s.id !== it.id && s.cat === it.cat && !s.trap && (!Gx || s.sub === it.sub);
-    const similar = Gx ? items.filter(same).slice(0, 4) : items.filter((s) => same(s) && s.sgg === it.sgg).slice(0, 4);
+    const near = (a, b) => Math.abs(Math.log((a.min || 1) / (it.min || 1))) - Math.abs(Math.log((b.min || 1) / (it.min || 1)));
+    const similar = Gx ? items.filter((s) => same(s) && s.min).sort((a, b) => ((b.use === it.use) - (a.use === it.use)) || near(a, b)).slice(0, 4)
+      : items.filter((s) => same(s) && s.sd === it.sd && s.sgg === it.sgg).slice(0, 4);
     if (!Gx && similar.length < 2) similar.push(...items.filter((s) => same(s) && s.sd === it.sd && !similar.includes(s)).slice(0, 4 - similar.length));
     await fs.writeFile(path.join(DIST, 'item', `${it.id}.html`), itemPage(it, tradeDetail[it.id] || [], similar, demo, updatedAt));
   }

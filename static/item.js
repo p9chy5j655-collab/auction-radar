@@ -28,7 +28,8 @@
     var toStart = it.st ? new Date(it.st).getTime() - Date.now() : 0;
     if (toStart > 0) {
       var sd = Math.floor(toStart / 864e5), sh = Math.floor(toStart % 864e5 / 36e5);
-      el.textContent = '입찰 시작까지 ' + (sd ? sd + '일 ' : '') + sh + '시간';
+      el.textContent = (sd ? sd + '일 ' : '') + sh + '시간';
+      var lab = el.parentNode && el.parentNode.querySelector('.muted'); if (lab) lab.textContent = '입찰 시작까지';
       if (dd) { dd.textContent = '입찰 예정'; dd.className = 'badge badge-blue'; }
       return;
     }
@@ -36,7 +37,9 @@
     if (ms <= 0) { el.textContent = '마감됐어요'; if (dd) dd.textContent = '마감'; return; }
     var d = Math.floor(ms / 864e5), h = Math.floor(ms % 864e5 / 36e5), m = Math.floor(ms % 36e5 / 6e4);
     el.textContent = (d ? d + '일 ' : '') + h + '시간 ' + m + '분';
-    if (dd) dd.textContent = d ? '마감 D-' + (d + (h || m ? 1 : 0)) : '오늘 마감';
+    var kd = function (t) { return Math.floor((t + 9 * 3600e3) / 864e5); };
+    var cd = kd(new Date(it.en).getTime()) - kd(Date.now());
+    if (dd) dd.textContent = cd <= 0 ? '오늘 마감' : cd === 1 ? '내일 마감' : '마감 D-' + cd;
   }
   tick(); setInterval(tick, 30000);
 
@@ -67,12 +70,13 @@
     sell: it.mkt ? Math.round(it.mkt.med / 10000) : (it.appr ? Math.round(it.appr / 10000) : 0),
     profit: 10,
     // 주택 1채 기준 대략값(취득세+지방교육세), 그 외 부동산 4.6%. 이용자가 바꿀 수 있어요.
-    tax: it.cat === 'home' ? ((it.min || 0) <= 6e8 ? 1.1 : (it.min || 0) <= 9e8 ? 2.2 : 3.3) : (it.cat === 'car' ? 7 : it.cat === 'goods' ? 0 : 4.6),
+    tax: it.cat === 'home' ? ((it.min || 0) <= 6e8 ? 1.1 : (it.min || 0) <= 9e8 ? 2.2 : 3.3) : ((it.cat === 'car' && it.sub !== 'heavy') ? 7 : (it.cat === 'goods' || it.cat === 'car') ? 0 : 4.6),
     fee: 0.5,
     repair: it.cat === 'home' ? 500 : 0,
     evict: it.cat === 'home' ? 300 : 0
   };
-  var saved = store.get('ar_mb', {});
+  var MBKEY = 'ar_mb_' + (it.cat === 'home' ? 'home' : it.cat);
+  var saved = store.get(MBKEY, {});
   var fields = { sell: 'mbSell', profit: 'mbProfit', tax: 'mbTax', fee: 'mbFee', repair: 'mbRepair', evict: 'mbEvict' };
   Object.keys(fields).forEach(function (k) {
     var v = (k === 'sell' || k === 'tax') ? defaults[k] : (saved[k] != null ? saved[k] : defaults[k]);
@@ -84,10 +88,15 @@
   var GUIDE = null;
   try { var gdEl = document.getElementById('guide-data'); if (gdEl) GUIDE = JSON.parse(gdEl.textContent); } catch (e) { GUIDE = null; }
   function calcMax() {
-    if (GUIDE) { maxBid = GUIDE.hi || null; return; }
+    if (GUIDE) {
+      maxBid = GUIDE.hi || null;
+      var qb = $('quick').querySelector && $('quick').querySelector('[data-v="max"]');
+      if (qb) qb.hidden = !maxBid;
+      return;
+    }
     var sell = val('mbSell') * 10000, profit = val('mbProfit') / 100, tax = val('mbTax') / 100, fee = val('mbFee') / 100;
     var fixed = (val('mbRepair') + val('mbEvict')) * 10000;
-    store.set('ar_mb', { profit: val('mbProfit'), tax: val('mbTax'), fee: val('mbFee'), repair: val('mbRepair'), evict: val('mbEvict') });
+    store.set(MBKEY, { profit: val('mbProfit'), tax: val('mbTax'), fee: val('mbFee'), repair: val('mbRepair'), evict: val('mbEvict') });
     var target = sell * (1 - profit) - fixed;
     maxBid = target > 0 ? Math.floor(target / (1 + tax + fee) / 100000) * 100000 : 0;
     var cost = maxBid * (tax + fee) + fixed;
@@ -101,7 +110,7 @@
           ? '최저 입찰가보다 <b style="color:#86EFAC">' + won(gap) + '</b> 여유가 있어요. 이 범위 안에서 경쟁을 고려해 정하세요.'
           : '최저 입찰가보다 <b style="color:#FDA29B">' + won(-gap) + '</b> 부족해요. 이 조건이면 입찰을 다시 생각해 보세요.') + '</span>';
       }
-      html += '<span class="line">' + (G ? (it.cat === 'car' ? '이전등록비 약 ' + won(maxBid * (tax + fee)) + ' + 수리비 ' : '운반·수리비 ') : '세금·등기비 약 ' + won(maxBid * (tax + fee)) + ' + 수리·명도 ') + won(fixed) + ' = 부대비용 약 ' + won(cost) + '</span>';
+      html += '<span class="line">' + (G ? ((it.cat === 'car' && it.sub !== 'heavy') ? '이전등록비 약 ' + won(maxBid * (tax + fee)) + ' + 수리비 ' : '운반·수리비 ') : '세금·등기비 약 ' + won(maxBid * (tax + fee)) + ' + 수리·명도 ') + won(fixed) + ' = 부대비용 약 ' + won(cost) + '</span>';
     }
     $('mbResult').innerHTML = html;
     var q = $('quick').querySelector('[data-v="max"]');
@@ -112,9 +121,12 @@
   var bidInput = $('bid');
   bidInput.value = it.min ? Math.round(it.min / 10000) : '';
   var quick = [['최저가로', function () { return it.min ? Math.round(it.min / 10000) : 0; }]];
+  // (가이드가 없는 물건은 계산 결과가 있어야 버튼을 보여줘요)
   quick.push([GUIDE ? '가이드 상한으로' : '최대 입찰가로', function () { return maxBid ? Math.round(maxBid / 10000) : 0; }, 'max']);
   var G = it.cat === 'goods' || it.cat === 'car';
-  var stepA = G && (it.min || 0) < 1e7 ? 10 : 500, stepB = stepA * 2;
+  var m0 = it.min || 0;
+  // 물건 값에 맞는 단위로 올리고 내려요
+  var stepA = G ? (m0 < 5e6 ? 10 : m0 < 3e7 ? 50 : m0 < 1e8 ? 100 : 500) : (m0 < 1e8 ? 100 : 500), stepB = stepA * 2;
   var lbl = function (n) { return n >= 1000 ? (n / 1000).toLocaleString('ko-KR') + ',000만' : n + '만'; };
   quick.push(['+' + lbl(stepA), function () { return val('bid') + stepA; }], ['+' + lbl(stepB), function () { return val('bid') + stepB; }], ['−' + lbl(stepA), function () { return Math.max(0, val('bid') - stepA); }]);
   $('quick').innerHTML = quick.map(function (q, i) { return '<button class="chip" data-q="' + i + '"' + (q[2] ? ' data-v="' + q[2] + '"' : '') + '>' + q[0] + '</button>'; }).join('');
@@ -128,19 +140,26 @@
     var v = $('verdict');
     var box = function (bg, color, title, text) { v.style.background = bg; v.innerHTML = '<b style="color:' + color + '">' + title + '</b><span>' + text + '</span>'; };
     if (!bid) box('#F7F8FA', '#3A3F4A', '입찰가를 넣어 보세요', '금액을 넣으면 감정가·시세와 비교해 드려요.');
+    else if (it.trap) box('#FFFAEB', '#B54708', '숨은 조건부터 확인하세요', '값이 많이 내려온 이유(지분·점유자·상태 등)를 공고문에서 확인하기 전에는 계산 결과를 믿기 어려워요.');
     else if (it.min != null && bid < it.min) box('#FEF3F2', '#B42318', '최저 입찰가보다 낮아요', '최저 입찰가 ' + won(it.min) + ' 이상으로 써야 입찰할 수 있어요.');
     else if (maxBid && bid > maxBid) box('#FFFAEB', '#B54708', GUIDE ? '가이드 상한을 넘었어요' : '최대 입찰가를 넘었어요', GUIDE ? '가이드 상한보다 ' + won(bid - maxBid) + ' 높아요. 이 값이면 공매로 사는 이점이 줄어요.' : '위에서 계산한 손익분기 금액보다 ' + won(bid - maxBid) + ' 높아요. 낙찰돼도 남는 게 없을 수 있어요.');
     else if (it.mkt && bid >= it.mkt.med * 0.95) box('#EEF4FF', '#1D4ED8', '시세에 가까워요', '주변 실거래 중간값의 ' + Math.round(bid / it.mkt.med * 100) + '%예요. 일반 매매와 비교해 공매로 사는 이점이 작아요.');
     else if (GUIDE && GUIDE.lo && bid < GUIDE.lo) box('#EEF4FF', '#1D4ED8', '가이드보다 낮게 썼어요', '입찰은 할 수 있지만, 비슷한 물건이 팔린 값보다 낮아 낙찰될 가능성은 낮을 수 있어요.');
+    else if (!maxBid) box('#F7F8FA', '#3A3F4A', '판단할 기준이 없어요', GUIDE ? '비교할 낙찰 사례나 감정가가 없어 가이드를 만들지 못했어요. 공고문과 시세를 직접 확인하세요.' : '위 계산기에 예상 매도가(시세)를 넣으면 판단해 드려요.');
     else box('#ECFDF3', '#067647', GUIDE ? '가이드 범위 안이에요' : '계산상 남는 범위예요', (GUIDE ? '가이드 범위 안쪽이에요' : '최대 입찰가 안쪽이에요') + '. 같은 물건에 몇 명이 들어올지에 따라 결과는 달라질 수 있어요.');
-    $('vsAppr').textContent = it.appr ? Math.round(bid / it.appr * 100) + '%' : '-';
-    if ($('vsMkt')) $('vsMkt').textContent = it.mkt ? Math.round(bid / it.mkt.med * 100) + '%' : '-';
-    $('deposit').textContent = won(bid * 0.1);
+    $('vsAppr').textContent = it.appr && bid ? Math.round(bid / it.appr * 100) + '%' : '-';
+    if ($('vsMkt')) $('vsMkt').textContent = it.mkt && bid ? Math.round(bid / it.mkt.med * 100) + '%' : '-';
+    $('deposit').textContent = bid ? won(bid * 0.1) : '-';
   }
 
   // 입찰 준비 도우미: 단계마다 바로 가는 버튼 + 돈 계획 + 마감 일정 저장
   var isRE = ['home', 'shop', 'land', 'etc'].indexOf(it.cat) !== -1;
-  var addr = (it.addr || '').replace(/\s+외\s*\d+.*$/, '').trim();
+  // 주소: '외 N필지' 같은 말과 괄호 설명은 빼고, 호수·번지까지만 남겨요
+  var addr = (function (a) {
+    a = String(a || '').replace(/\s*외\s*\d+\s*(필지|개|건|동|호|점|대)\S*/g, ' ').replace(/\([^)]*\)|\[[^\]]*\]/g, ' ').replace(/\s+/g, ' ').trim();
+    var m = a.match(/^(.*?\d+\s*호)/) || a.match(/^(.*?\d+(-\d+)?\s*(번지)?)(\s|$)/);
+    return (m ? m[1] : a).trim();
+  })(it.addr);
   var addrQ = encodeURIComponent(addr);
   function link(label, href) { return '<a class="mini-btn" href="' + href + '" target="_blank" rel="noopener">' + label + '</a>'; }
   function btn(label, act) { return '<button class="mini-btn" type="button" data-act="' + act + '">' + label + '</button>'; }
@@ -173,14 +192,14 @@
     var CAL = ['마감 일정 저장', '입찰 마감을 놓치지 않게 캘린더에 넣어 둬요. 하루 전 알림이 같이 들어가요.', btn('구글 캘린더', 'gcal') + btn('휴대폰 캘린더', 'ics')];
     var PICK = ['받으러 갈 날 정하기', '낙찰 뒤 잔금을 내고 정해진 기한 안에 보관 장소에서 직접 받아 와요. 거리와 시간을 미리 잡아 두세요.', mapPlace];
     var sub = it.sub;
-    if (it.cat === 'car') {
+    if ((it.cat === 'car' && it.sub !== 'heavy')) {
       steps = [
         ['차량번호·보관소 확인', '온비드 원문에서 차량번호, 보관소 위치, 열쇠·서류가 있는지 확인해요. 아래 단계에서 차량번호가 필요해요.', onbid + mapPlace],
         ['사고·침수 이력 조회', '보험개발원 카히스토리에서 차량번호로 사고·침수·용도 변경 이력을 볼 수 있어요(유료).', link('카히스토리', 'https://www.carhistory.or.kr')],
         ['압류·저당 확인', '자동차등록원부로 압류·저당이 몇 건인지 봐요. 공매 뒤 말소되는지는 공고문 조건으로 확인해요.', link('정부24', 'https://www.gov.kr') + onbid],
         ['같은 차 시세 보기', '같은 차종·연식 중고차 시세와 비교해요. 주행거리와 상태에 따라 차이가 커요.', btn('시세 보기', 'mkt')],
         ['가져오는 방법 정하기', '이전등록과 보험 가입 전에는 바로 운전해 오기 어려울 수 있어요. 탁송·견인 비용을 알아봐요.', link('탁송 비용 찾아보기', nv('차량 탁송 비용'))],
-        ['이전등록 준비', '낙찰 뒤 차량등록사업소에서 이전등록을 하고 취득세를 내요. 계산기의 이전등록비 칸에 반영돼 있어요.', btn('계산기 보기', 'calc')],
+        ['이전등록 준비', '낙찰 뒤 차량등록사업소에서 이전등록을 하고 취득세 등(약 7%)을 내요. 돈 계획에 넣어 두었어요.', btn('가이드 보기', 'calc')],
         MONEY, CAL
       ];
     } else if (sub === 'luxury') {
@@ -237,7 +256,8 @@
     var box = $('money'); if (!box) return;
     var bid = (val('bid') || (it.min ? it.min / 10000 : 0)) * 10000;
     var taxRate = (val('mbTax') + val('mbFee')) / 100;
-    var fixedCost = isRE ? 0 : val('mbRepair') * 10000;
+    if (!document.getElementById('mbTax') && (it.cat === 'car' && it.sub !== 'heavy')) taxRate = 0.07;
+    var fixedCost = (val('mbRepair') + val('mbEvict')) * 10000;
     var cash = store.get('ar_cash', '');
     var loan = isRE ? store.get('ar_loan', 50) : 0;
     box.innerHTML = '<div class="form-grid"><label>내가 쓸 수 있는 현금<span class="input-row sm"><input id="cash" type="number" inputmode="numeric" value="' + cash + '" placeholder="' + (isRE ? '예: 10000' : '예: 300') + '"><span>만원</span></span></label>' +
@@ -253,10 +273,10 @@
         '<div class="mo-row"><span>① 입찰할 때 보증금 10%</span><b>' + won(deposit) + '</b></div>' +
         '<div class="mo-row"><span>② 낙찰 뒤 잔금</span><b>' + won(rest) + '</b></div>' +
         (l ? '<div class="mo-row"><span>　 그중 대출 예상 ' + Math.round(l * 100) + '%</span><b>−' + won(loanAmt) + '</b></div>' : '') +
-        '<div class="mo-row"><span>③ ' + (isRE ? '세금·등기비 등' : it.cat === 'car' ? '이전등록비·수리·탁송비' : '운반·수리비') + '</span><b>' + won(extra) + '</b></div>' +
+        '<div class="mo-row"><span>③ ' + (isRE ? '세금·등기비·수리·명도비' : (it.cat === 'car' && it.sub !== 'heavy') ? '이전등록비(약 7%)' : '운반·수리비') + '</span><b>' + won(extra) + '</b></div>' +
         '<div class="mo-row total"><span>내 돈으로 필요한 금액</span><b>' + won(need) + '</b></div>' +
         (c ? '<p class="' + (c >= need ? 'mo-ok' : 'mo-bad') + '">' + (c >= need ? '현금으로 충분해요. 여유 ' + won(c - need) : won(need - c) + (isRE ? ' 부족해요. 입찰가나 대출 계획을 다시 생각해 보세요.' : ' 부족해요. 동산은 대출이 어려우니 입찰가를 낮춰 보세요.')) + '</p>' : '') +
-        '<p class="note">' + (isRE ? '대출은 낙찰 후 심사라 안 나올 수도 있어요. ' : '③은 위 계산기에 넣은 값이에요. ') + '잔금 납부 기한은 공고문에서 확인하세요.</p>';
+        '<p class="note">' + (isRE ? '③은 위 계산기의 세금·수리·명도비예요. 대출은 낙찰 후 심사라 안 나올 수도 있어요. ' : (it.cat === 'car' && it.sub !== 'heavy') ? '③은 취득세 등 약 7%만 넣었어요. 탁송·수리비는 따로 더하세요. ' : '③은 따로 넣은 운반·수리비가 없으면 0원이에요. ') + '잔금 납부 기한은 공고문에서 확인하세요.</p>';
     }
     box.addEventListener('input', out); out();
   }
@@ -274,7 +294,7 @@
     if (act === 'copy') {
       if (navigator.clipboard) navigator.clipboard.writeText(addr).then(function () { toast('주소를 복사했어요.'); }, function () { toast(addr); }); else toast(addr);
     } else if (act === 'mkt') {
-      var t = document.querySelector('.compare, .link-row, #maxbid'); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      var t = document.getElementById('mktSec') || document.querySelector('.link-row') || document.getElementById('maxbid'); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } else if (act === 'code' || act === 'calc') {
       var tg = act === 'code' ? (document.getElementById('codeIn') || document.querySelector('.link-row')) : document.getElementById('maxbid');
       if (tg) { if (tg.tagName === 'DETAILS') tg.open = true; tg.scrollIntoView({ behavior: 'smooth', block: 'center' }); if (tg.focus && act === 'code') tg.focus(); }
@@ -320,4 +340,10 @@
     var n = gal.children.length, i = Math.round(gal.scrollLeft / Math.max(1, gal.clientWidth));
     gc.textContent = Math.min(n, i + 1) + ' / ' + n;
   }, { passive: true });
+
+  // 뒤로 버튼: 사이트 안에서 왔으면 보던 목록(탭·필터·스크롤)으로 돌아가요
+  var backA = document.querySelector('.topbar a.icon-btn');
+  if (backA && document.referrer && document.referrer.indexOf(location.origin) === 0 && history.length > 1) {
+    backA.addEventListener('click', function (e) { e.preventDefault(); history.back(); });
+  }
 })();
