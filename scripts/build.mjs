@@ -212,6 +212,8 @@ function subOf(r, cat) {
   if (cat === 'car') return /^(중기|선박|항공)/.test(use) || HEAVY.test(m) ? 'heavy' : 'car';
   if (/^(유가증권|NPL|무형자산|회원권)/.test(use) || /비상장|주권|보통주|우선주|출자증권|출자금|주식\s*[\d,]+\s*주|[\d,]+\s*주\b|채권|NPL|특허|상표권|저작권|디자인권|회원권|지분/.test(m)) return 'right';
   if (/재고|원자재|원단|자재|농산물|수산물|축산물|주류|폐기물|고철|잡철|비철|재활용|플라스틱|파지|캔류|PET|EPS|파병|입목|임산물|벌채|생산물|부산물|맥류|암매각/.test(m)) return 'stock';
+  // 장신구는 귀금속으로 (용도 이름에 '시계'가 함께 붙어 있어도 이름이 먼저)
+  if (/귀걸이|목걸이|팔찌|반지|펜던트|진주|브로치|골드바|순금|금괴|\d+\s*[kK]\b|\d+\s*돈/.test(name) && !/시계/.test(name)) return 'gold';
   if (/시계|롤렉스|까르띠에|에르메스|샤넬|루이비통|구찌|프라다|오메가|명품|핸드백|명품가방/.test(m)) return 'luxury';
   if (/노트북|휴대폰|아이폰|갤럭시|아이패드|냉장고|세탁기|에어컨|모니터|컴퓨터/.test(m)) return 'elec';
   if (/가방|보석|다이아(?!몬드\s*테크)/.test(m)) return 'luxury';
@@ -1010,7 +1012,7 @@ ${G ? '<div><dt>인도</dt><dd>낙찰 뒤 대금을 다 내고 물건을 넘겨�
 
 ${G ? goodsCards(it, kw, place) : ''}
 
-${isTrap(it) ? `<section class="card-block trap"><b>숨은 조건 가능성이 큰 물건이에요</b><p class="muted small">값이 감정가보다 지나치게 낮거나 지분·토지만·건물만 파는 표현이 있어요. 이런 물건은 시세 비교와 낙찰가 예측이 맞지 않아 보여드리지 않아요. 공고문의 유의사항을 먼저 확인하세요.</p></section>` : ''}
+${isTrap(it) ? (G ? `<section class="card-block trap"><b>값이 많이 내려온 이유를 먼저 확인하세요</b><p class="muted small">감정가의 ${it.rate}%까지 내려온 물건이에요. 동산은 상태가 나쁘거나 등록·폐기·사용 제한 같은 조건이 붙어 있는 경우가 있어요. 공고문의 유의사항과 사진을 먼저 확인하세요.</p></section>` : `<section class="card-block trap"><b>숨은 조건 가능성이 큰 물건이에요</b><p class="muted small">값이 감정가보다 지나치게 낮거나 지분·토지만·건물만 파는 표현이 있어요. 이런 물건은 시세 비교와 낙찰가 예측이 맞지 않아 보여드리지 않아요. 공고문의 유의사항을 먼저 확인하세요.</p></section>`) : ''}
 ${!G && !isTrap(it) && it.rr && it.appr ? `<section class="card-block">
 <h2>얼마에 낙찰될까?</h2>
 <p class="muted small">최근 2주 ${esc(it.sd)} ${esc(CAT_NAME[it.cat])} 공매 ${it.rr.n}건은 감정가의 <b>${it.rr.med}%</b>(중간값)에 낙찰됐어요.</p>

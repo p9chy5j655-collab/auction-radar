@@ -352,7 +352,7 @@
       '<div class="pick2-body"><div class="badges"><span class="badge">' + esc(catLabel(it)) + '</span>' + badgesOf(it) + '</div>' +
       '<div class="pick-title">' + esc(it.t) + '</div>' +
       '<div class="pick-price"><b>' + won(it.min) + '</b><span class="rate-chip">감정가의 ' + it.rate + '%</span></div>' +
-      '<div class="pick-plain">' + (it.appr ? '감정가 ' + won(it.appr) + '원짜리가 ' + won(it.min) + '원부터 시작해요. ' + (it.fails ? it.fails + '번 유찰돼(안 팔려서) 값이 내려왔어요.' : '처음 나온 물건이에요.') : '') + (MODE === 're' && isCheap(it) ? ' · 주변 시세의 ' + it.mkt.ratio + '%' : '') + '</div>' +
+      '<div class="pick-plain">' + (it.appr ? '감정가 ' + won(it.appr) + '원짜리가 ' + won(it.min) + '원부터 시작해요. ' + (it.fails ? it.fails + '번 유찰돼(안 팔려서) 값이 내려왔어요.' : (it.rate != null && it.rate < 100 ? '최저가가 감정가보다 낮게 정해진 물건이에요.' : '처음 나온 물건이에요.')) : '') + (MODE === 're' && isCheap(it) ? ' · 주변 시세의 ' + it.mkt.ratio + '%' : '') + '</div>' +
       '<span class="pick-cta">' + (big ? '이 물건 자세히 보기 →' : '낙찰 도우미로 따져보기 →') + '</span></div></a>';
   }
   // 첫 화면: 회전 낱말 + 진열장(실제 물건) + 사실 띠
@@ -369,6 +369,7 @@
   function renderHero() {
     if (MODE !== 'goods' || !document.getElementById('wall')) return;
     var pool = heroPool();
+    var wallSeen = {}; pool = pool.filter(function (x) { var k = baseName(x); if (wallSeen[k]) return false; wallSeen[k] = 1; return true; });
     var g = pool.filter(isGd).sort(function (a, b) { return (b.thumb ? 1 : 0) - (a.thumb ? 1 : 0) || score(b) - score(a); });
     var r = pool.filter(function (i) { return !isGd(i); }).sort(function (a, b) { return (b.thumb ? 1 : 0) - (a.thumb ? 1 : 0) || score(b) - score(a); });
     // 같은 종류가 이어지지 않게 섞고, 부동산은 사이사이에만
@@ -419,18 +420,20 @@
       '<div class="scroller">' + sh.list.map(function (i) { return miniHtml(i, sh.top(i)); }).join('') + '</div></section>';
   }
   var shownPickId = null, pageSeen = { id: {}, name: {} };
+  // 같은 건물의 다른 호수·면적처럼 이름이 거의 같은 물건을 하나로 봐요 (숫자·면적·괄호 빼고 비교)
+  function baseName(x) { return String(x.t || '').replace(/\([^)]*\)|\[[^\]]*\]/g, '').replace(/[\d.,]+\s*(㎡|평|호|층|동|번지)?/g, '').replace(/\s+/g, ''); }
   function renderShelves(closing) {
     var items = data.items, shelves = [];
     var dd = function (i) { return '<span class="badge badge-red">' + esc(ddayLabel(i)) + '</span>'; };
     var lab = function (i) { return '<span class="badge">' + esc(catLabel(i)) + '</span>'; };
-    var cl = closing.filter(function (i) { return !i.risk; }).sort(function (a, b) { return score(b) - score(a); }).slice(0, 40);
+    var cl = closing.filter(function (i) { return !i.risk && !notStarted(i); }).sort(function (a, b) { return score(b) - score(a); }).slice(0, 40);
     if (MODE === 'goods') {
       if (cl.length) shelves.push({ title: '오늘·내일 마감', sub: '48시간 이내', go: 'closing', list: cl, top: dd });
       var small = items.filter(cheapOdd).sort(function (a, b) { return a.min - b.min; }).slice(0, 40);
       if (small.length) shelves.push({ title: '100만 원 이하로 시작해요', sub: '소액 물건', go: 'cheapodd', list: small, top: lab });
       [['luxury', '명품·시계 모음'], ['car', '자동차 모음'], ['elec', '전자기기 모음'], ['gold', '금·귀금속 모음']].forEach(function (c) {
         var l = items.filter(function (i) { return i.sub === c[0] && !i.risk; }).sort(function (a, b) { return score(b) - score(a); }).slice(0, 40);
-        if (l.length >= 2) shelves.push({ title: c[1], sub: l.length + '건 이상', go: 'top', cat: c[0], list: l, top: function (i) { return badgesOf(i); } });
+        if (l.length >= 2) shelves.push({ title: c[1], sub: l.length + (c[0] === 'car' ? '대' : '점'), go: 'top', cat: c[0], list: l, top: function (i) { return badgesOf(i); } });
       });
       var ranked = items.filter(function (i) { return i.rank && !i.trap && !lowball(i); }).sort(function (a, b) { return a.rank - b.rank; }).slice(0, 40);
       if (ranked.length) shelves.push({ title: '온비드에서 관심 많은 물건', sub: '이번 주 관심 저장 순', go: 'rank', list: ranked, top: function (i) { return '<span class="badge badge-hot">' + i.rank + '위</span>'; } });
@@ -458,7 +461,7 @@
     // 같은 물건(또는 같은 건물의 다른 호수처럼 이름이 같은 물건)은 한 화면에 한 번만 보여줘요
     var seenId = {}, seenName = {};
     if (shownPickId) seenId[shownPickId] = 1;
-    var nameKey = function (x) { return (x.t || '').replace(/\s+/g, '') + '|' + (x.sgg || ''); };
+    var nameKey = function (x) { return baseName(x) + '|' + (x.sgg || ''); };
     shelves = shelves.map(function (sh) {
       var out = [], local = {};
       sh.list.forEach(function (x) {
@@ -557,7 +560,7 @@
   function dealWhy(it) {
     var s = '감정가 ' + won(it.appr) + '짜리가 ' + won(it.min) + '부터 시작해요. ';
     if (it.fails >= 1) s += '그동안 ' + it.fails + '번 아무도 사지 않아(유찰) 회차마다 최저가가 내려왔어요.';
-    else s += '처음부터 감정가보다 낮은 값으로 나온 물건이에요.';
+    else s += '공고에 유찰 기록은 없지만 최저가가 감정가보다 낮게 정해져 있어요. 이유는 공고문에서 확인하세요.';
     return s;
   }
   function renderDeals() {
@@ -574,7 +577,7 @@
     });
     var sparse = data.items.length < 30;
     var dn = {}, list = re.filter(function (x) {
-      var k = (x.t || '').replace(/\s+/g, '') + '|' + (x.sgg || '');
+      var k = baseName(x) + '|' + (x.sgg || '');
       if (pageSeen.id[x.id] || pageSeen.name[k] || dn[k]) return false;
       dn[k] = 1; return true;
     }).slice(0, sparse ? 5 : 3);
@@ -645,8 +648,7 @@
     var sgg = {};
     items.filter(function (i) { return i.cat === 'home' || i.cat === 'shop'; }).forEach(function (i) { if (i.sgg) sgg[i.sgg] = (sgg[i.sgg] || 0) + score(i); });
     var hot = Object.keys(sgg).sort(function (a, b) { return sgg[b] - sgg[a]; }).slice(0, 4).map(function (s) { return s.split(' ').pop(); });
-    hot.unshift('100만원 이하');
-    if (data.hasGoods) hot.unshift('명품');
+    if (MODE === 'goods') { hot.unshift('100만원 이하'); if (data.hasGoods) hot.unshift('명품'); }
     hot.push('반값 아파트');
     $('hot').innerHTML = hot.map(function (w) { return '<button data-hot="' + esc(w) + '">#' + esc(w) + '</button>'; }).join('');
 
