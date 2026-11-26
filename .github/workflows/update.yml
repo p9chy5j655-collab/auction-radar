@@ -70,6 +70,27 @@ jobs:
           NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
         run: node scripts/build.mjs
 
+      - name: 공유 카드 캐시
+        uses: actions/cache@v4
+        with:
+          path: |
+            .cache/og
+            .cache/fonts
+          key: og-${{ github.run_id }}
+          restore-keys: |
+            og-
+
+      - name: 카톡 공유 카드 만들기
+        run: |
+          mkdir -p .cache/fonts
+          for w in Bold Medium; do
+            f=".cache/fonts/Pretendard-$w.otf"
+            [ -s "$f" ] || curl -fsSL -o "$f" "https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/public/static/Pretendard-$w.otf" || rm -f "$f"
+          done
+          if [ ! -s .cache/fonts/Pretendard-Bold.otf ]; then sudo apt-get install -y -qq fonts-noto-cjk >/dev/null; fi
+          python3 -c "import PIL" 2>/dev/null || pip install -q pillow
+          OG_FONT_BOLD=.cache/fonts/Pretendard-Bold.otf OG_FONT_REG=.cache/fonts/Pretendard-Medium.otf python3 scripts/og.py
+
       - name: 점검용 사본 (커밋 메시지에 [snapshot]이 있을 때만 snapshot 브랜치에 올림)
         if: github.event_name == 'push' && contains(github.event.head_commit.message, '[snapshot]')
         run: |

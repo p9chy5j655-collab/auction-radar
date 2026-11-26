@@ -609,3 +609,19 @@ body{background:#E7E1D5;font-feature-settings:"tnum" 1}
 .guide-why b{font-size:14px;color:#9A3412}.guide-why p{margin:4px 0 0;font-size:13px;color:var(--ink-2);line-height:1.5}
 
 .art > img{background:transparent!important}
+/* 초보 가이드 */
+.guide-hero{padding:20px 16px 4px}
+.guide-hero h1{margin:0 0 8px;font-size:28px;font-weight:850;letter-spacing:-.04em}
+.guide-hero p{margin:0;font-size:15px;color:var(--ink-2);line-height:1.6;word-break:keep-all}
+.toc{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px}
+.toc a{padding:7px 11px;border-radius:999px;background:#fff;border:1px solid var(--line);font-size:13px;font-weight:600;color:var(--ink);text-decoration:none}
+.steps5{list-style:none;counter-reset:s;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+.steps5 li{counter-increment:s;position:relative;padding:12px 14px 12px 50px;background:#fff;border:1px solid var(--line);border-radius:14px;display:flex;flex-direction:column;gap:4px}
+.steps5 li::before{content:counter(s);position:absolute;left:14px;top:12px;width:26px;height:26px;border-radius:50%;background:var(--ink);color:#fff;font-weight:800;font-size:14px;display:grid;place-items:center}
+.steps5 b{font-size:15.5px}.steps5 span{font-size:14px;color:var(--ink-2);line-height:1.6;word-break:keep-all}.steps5 em{font-style:normal;color:var(--hammer);font-weight:700}
+.tip{font-size:13.5px;background:var(--hammer-soft);border-radius:12px;padding:10px 12px}
+.words div{padding:10px 0;border-bottom:1px solid var(--line)}.words dt{font-weight:800}.words dd{margin:2px 0 0;color:var(--ink-2);font-size:14px}
+/* 스크립트 전 미리 그린 목록 (검색엔진·느린 폰용) */
+.pre-item{display:flex;flex-direction:column;gap:2px;padding:12px 14px;margin:0 16px 8px;background:#fff;border-radius:12px;color:var(--ink);text-decoration:none}
+.pre-item span{font-size:13px;color:var(--muted)}
+.article .steps5{padding-left:0;margin-left:0}

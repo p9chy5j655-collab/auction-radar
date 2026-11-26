@@ -945,7 +945,9 @@ function itemPage(it, trades, similar, demo, updatedAt) {
 ${canonical ? `<link rel="canonical" href="${esc(canonical)}">` : ''}
 <meta property="og:title" content="${esc(title)}">
 <meta property="og:description" content="${esc(desc)}">
-<meta property="og:image" content="${esc(it.thumb ? (SITE + it.thumb) : (SITE ? SITE + '/og.png' : '../og.png'))}">
+<meta property="og:image" content="${esc(it.og ? SITE + it.og : it.thumb ? (SITE + it.thumb) : (SITE ? SITE + '/og.png' : '../og.png'))}">
+${it.og ? '<meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">' : ''}
+<meta name="twitter:card" content="summary_large_image">
 <meta name="theme-color" content="#ffffff">
 <link rel="manifest" href="../manifest.webmanifest">
 <link rel="icon" href="../icon.svg" type="image/svg+xml">
@@ -1270,8 +1272,24 @@ async function main() {
       it.thumb = `/t/${it._thumbFile}`;
     }
   }
+  // 카톡 공유 카드: 동산·차량(권리·재고 제외)과 우선순위 높은 부동산 600건만 만들어요 (scripts/og.py가 그림을 그려요)
+  const OG_MAX_RE = Number(process.env.OG_MAX_RE || 600);
+  const ogTargets = [...gList.filter((it) => !['right', 'stock'].includes(it.sub)), ...rList.slice(0, OG_MAX_RE)].filter((it) => it.min);
+  const ogJobs = ogTargets.map((it) => {
+    it.og = `/og/${it.id}.jpg`;
+    const G = it.cat === 'goods' || it.cat === 'car';
+    return {
+      id: it.id, t: it.t, kind: G ? (it.cat === 'car' ? '차량 공매' : `${SUB_NAME[it.sub] || '동산'} 공매`) : `${CAT_NAME[it.cat] || '부동산'} 공매`,
+      min: won(it.min), appr: it.appr ? won(it.appr) : '', rate: it.rate && it.rate < 100 && !it.trap ? it.rate : null,
+      region: G ? '' : [SD_SHORT(it.sd), it.sgg].filter(Boolean).join(' '), end: it.en ? kdate(it.en) : '',
+      thumb: it._thumbFile ? path.join(CACHE, 'thumbs', it._thumbFile) : ''
+    };
+  });
+  await fs.writeFile(path.join(ROOT, '.cache', 'og-jobs.json'), JSON.stringify(ogJobs)).catch(async () => { await fs.mkdir(CACHE, { recursive: true }); await fs.writeFile(path.join(CACHE, 'og-jobs.json'), JSON.stringify(ogJobs)); });
+  log(`공유 카드 대상 ${ogJobs.length}건`);
+
   const slim = listed.map((it) => {
-    const { pnu, evc, how, org, req, land, bld, url, prop, alc, key, addr, mod, stat, src, _thumbFile, _gallery, gallery, photos, spec, ...rest } = it;
+    const { pnu, evc, how, org, req, land, bld, url, prop, alc, key, addr, mod, stat, src, _thumbFile, _gallery, gallery, photos, spec, og, ...rest } = it;
     return { ...rest, risk: risksOf(it).filter(([h]) => h !== '시세 비교 없음' && !h.startsWith('명도')).length };
   });
   const gRes = results.filter((r) => (r.cat === 'goods' || r.cat === 'car') && r.t).slice(0, 20);
@@ -1280,6 +1298,34 @@ async function main() {
     updatedAt, demo, hasGoods: items.some((i) => i.cat === 'goods'), hasCar: items.some((i) => i.cat === 'car'),
     hasRank: items.some((i) => i.rank), total: items.length, results: recentResults, items: slim
   }));
+  // 첫 화면용 가벼운 데이터: 동산·차량 + 화면 진열에 쓰는 부동산 일부 + 미리 센 숫자. 전체 목록은 뒤에서 따로 받아요.
+  {
+    const soon = (it) => it.en && new Date(it.en).getTime() - now <= 48 * 3600e3 && new Date(it.en).getTime() > now;
+    const gIds = new Set(slim.filter((x) => x.cat === 'goods' || x.cat === 'car').map((x) => x.id));
+    const reSlim = slim.filter((x) => !gIds.has(x.id));
+    const pickRe = new Set([
+      ...reSlim.slice(0, 300), ...reSlim.filter((x) => x.rank), ...reSlim.filter(soon).slice(0, 80),
+      ...reSlim.filter((x) => x.rate != null && x.rate <= 60 && !x.trap).slice(0, 120), ...reSlim.filter((x) => x.mkt).slice(0, 60)
+    ]);
+    const homeItems = [...slim.filter((x) => gIds.has(x.id)), ...pickRe];
+    const stats = {
+      total: listed.length, goods: listed.filter((x) => (x.cat === 'goods' || x.cat === 'car') && !['right', 'stock'].includes(x.sub)).length,
+      re: listed.filter((x) => !(x.cat === 'goods' || x.cat === 'car')).length, soon: listed.filter(soon).length
+    };
+    await fs.writeFile(path.join(DIST, 'data', 'home.json'), JSON.stringify({
+      updatedAt, demo, partial: true, stats, hasGoods: items.some((i) => i.cat === 'goods'), hasCar: items.some((i) => i.cat === 'car'),
+      hasRank: items.some((i) => i.rank), total: items.length, results: recentResults, items: homeItems
+    }));
+    log(`첫 화면 데이터 ${homeItems.length}건`);
+    // 검색엔진·느린 폰을 위해 첫 화면 목록 30개를 미리 그려 둬요 (스크립트가 돌면 바로 바뀌어요)
+    const pre = slim.filter((x) => (x.cat === 'goods' || x.cat === 'car') && !['right', 'stock'].includes(x.sub) && x.min).slice(0, 20).concat(reSlim.slice(0, 10));
+    const preHtml = pre.map((x) => `<a class="pre-item" href="item/${esc(x.id)}.html"><b>${esc(x.t)}</b><span>${won(x.min)}${x.rate && x.rate < 100 ? ` · 감정가의 ${x.rate}%` : ''}</span></a>`).join('');
+    for (const f of ['index.html']) {
+      const fp = path.join(DIST, f);
+      const h = await fs.readFile(fp, 'utf8');
+      await fs.writeFile(fp, h.replace('<div class="list" id="list"></div>', `<div class="list" id="list">${preHtml}</div>`));
+    }
+  }
   await fs.writeFile(path.join(DIST, 'report.html'), reportPage(items, recentResults, demo, updatedAt));
 
   for (const it of items) {

@@ -93,6 +93,7 @@
   function isHalf(it) { return it.rate != null && it.rate <= 50 && !lowball(it); }
   function isCheap(it) { return it.mkt && it.mkt.ratio <= 85 && it.mkt.ratio >= 40 && !lowball(it); }
   function isGd(i) { return i.cat === 'goods' || i.cat === 'car'; }
+  function isRight(i) { return i.sub === 'right' || i.sub === 'stock'; }
   var RE_CATS = [['home', '아파트·주택'], ['shop', '상가·업무'], ['land', '토지']];
   function score(it) {
     var s = 0;
@@ -177,7 +178,9 @@
   function filtered() {
     var q = st.q.trim().toLowerCase();
     var source = (st.tab === 'liked' || MODE === 'goods') ? allItems : data.items;
+    var hideRights = MODE === 'goods' && st.cat === 'all' && !q && st.tab !== 'liked';
     var list = source.filter(function (it) {
+      if (hideRights && isRight(it)) return false;
       if (st.cat !== 'all' && grp(it) !== st.cat) return false;
       if (st.sido && shortSido(it.sd) !== st.sido) return false;
       if (q && (it.t + ' ' + it.sd + ' ' + it.sgg + ' ' + it.emd + ' ' + it.use + ' ' + (CAT[it.cat] || '')).toLowerCase().indexOf(q) === -1) return false;
@@ -397,8 +400,10 @@
       }, 2400);
     }
     // 사실 띠
-    var gN = allItems.filter(isGd).length, rN = allItems.length - gN;
-    var soon = allItems.filter(function (i) { return hoursLeft(i) <= 48 && hoursLeft(i) > 0; }).length;
+    // 비상장주식·채권 같은 권리와 고철·재고는 '구경거리'가 아니라 숫자에서 빼요
+    var gN = homeStats ? homeStats.goods : allItems.filter(function (i) { return isGd(i) && !isRight(i); }).length;
+    var rN = homeStats ? homeStats.re : allItems.filter(function (i) { return !isGd(i); }).length;
+    var soon = homeStats ? homeStats.soon : allItems.filter(function (i) { return hoursLeft(i) <= 48 && hoursLeft(i) > 0; }).length;
     $('facts').innerHTML = '<button data-go="top" data-gocat="all"><b>' + gN.toLocaleString('ko-KR') + '점</b><span>명품·차·금 등 동산</span></button>' +
       '<a href="realestate.html"><b>' + rN.toLocaleString('ko-KR') + '건</b><span>집·땅·상가</span></a>' +
       '<button data-go="closing" data-gocat="all"><b>' + soon.toLocaleString('ko-KR') + '건</b><span>48시간 안에 마감</span></button>';
@@ -419,7 +424,7 @@
     return '<section class="shelf' + (sh.re ? ' shelf-re' : '') + '"><div class="section-head"><h2>' + (sh.re ? '<span class="re-tag">부동산</span>' : '') + esc(sh.title) + '</h2><button class="link-btn" data-go="' + sh.go + '"' + (sh.cat ? ' data-gocat="' + sh.cat + '"' : '') + '>' + esc(sh.sub) + ' · 전체</button></div>' +
       '<div class="scroller">' + sh.list.map(function (i) { return miniHtml(i, sh.top(i)); }).join('') + '</div></section>';
   }
-  var shownPickId = null, pageSeen = { id: {}, name: {} };
+  var shownPickId = null, pageSeen = { id: {}, name: {} }, homeStats = null;
   // 같은 건물의 다른 호수·면적처럼 이름이 거의 같은 물건을 하나로 봐요 (숫자·면적·괄호 빼고 비교)
   function baseName(x) { return String(x.t || '').replace(/\([^)]*\)|\[[^\]]*\]/g, '').replace(/[\d.,]+\s*(㎡|평|호|층|동|번지)?/g, '').replace(/\s+/g, ''); }
   function renderShelves(closing) {
@@ -653,7 +658,7 @@
     $('hot').innerHTML = hot.map(function (w) { return '<button data-hot="' + esc(w) + '">#' + esc(w) + '</button>'; }).join('');
 
     var d = data.updatedAt ? new Date(data.updatedAt) : null;
-    $('updated').textContent = (MODE === 'goods' ? '지금 공매 중 ' + allItems.length.toLocaleString('ko-KR') + '건' : '온비드 부동산 공매 ' + items.length.toLocaleString('ko-KR') + '건 · 매시간 업데이트') +
+    $('updated').textContent = (MODE === 'goods' ? '지금 공매 중 ' + (homeStats ? homeStats.total : allItems.length).toLocaleString('ko-KR') + '건' : '온비드 부동산 공매 ' + items.length.toLocaleString('ko-KR') + '건 · 매시간 업데이트') +
       (d ? ' · ' + d.toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) + ' 기준' : '');
     $('demo').hidden = !data.demo;
     var ageH = d ? (Date.now() - d.getTime()) / 3600e3 : 0;
@@ -788,20 +793,40 @@
   if (params.get('tab')) st.tab = params.get('tab');
   if (params.get('cat')) st.cat = params.get('cat');
   else if (cond) st.tab = 'cond';
-  fetch('data/items.json', { cache: 'no-cache' }).then(function (r) { return r.json(); }).then(function (d) {
+  var isGx = function (i) { return i.cat === 'goods' || i.cat === 'car'; };
+  function setData(d) {
     d.items = d.items.filter(function (i) { return !(i.en && new Date(i.en).getTime() < Date.now()); });
     allItems = d.items;
-    var isG = function (i) { return i.cat === 'goods' || i.cat === 'car'; };
-    data = Object.assign({}, d, { items: d.items.filter(function (i) { return MODE === 'goods' ? isG(i) : !isG(i); }) });
+    data = Object.assign({}, d, { items: d.items.filter(function (i) { return MODE === 'goods' ? isGx(i) : !isGx(i); }) });
     // 결과: 구경 화면은 동산·차량 결과를 먼저, 없으면 전체
-    var gRes = (d.results || []).filter(isG);
-    data.results = MODE === 'goods' ? (gRes.length ? gRes.concat((d.results || []).filter(function (r) { return !isG(r); })) : (d.results || [])) : (d.results || []).filter(function (r) { return !isG(r); });
-    var ids = {}; d.items.forEach(function (i) { ids[i.id] = 1; });
-    Object.keys(liked).forEach(function (k) { if (!ids[k]) delete liked[k]; });
-    store.set('ar_liked', liked);
+    var gRes = (d.results || []).filter(isGx);
+    data.results = MODE === 'goods' ? (gRes.length ? gRes.concat((d.results || []).filter(function (r) { return !isGx(r); })) : (d.results || [])) : (d.results || []).filter(function (r) { return !isGx(r); });
+  }
+  function loadFail() {
+    $('updated').textContent = '물건을 불러오지 못했어요. 잠시 후 다시 열어 주세요.';
+    $('list').innerHTML = '<div class="empty">물건을 불러오지 못했어요.<br>인터넷 연결을 확인하고 새로고침해 주세요.</div>';
+  }
+  var getJson = function (u) { return fetch(u, { cache: 'no-cache' }).then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); }); };
+  var full = getJson('data/items.json');
+  // 구경 화면은 가벼운 첫 화면 데이터로 먼저 그리고, 전체 목록은 받아지는 대로 바꿔요
+  var first = MODE === 'goods' ? getJson('data/home.json').catch(function () { return full; }) : full;
+  first.then(function (d) {
+    if (d.stats) homeStats = d.stats;
+    setData(d);
     renderStatic(); render();
-  }).catch(function () {
-    $('updated').textContent = '데이터를 불러오지 못했어요. 잠시 후 다시 열어 주세요.';
-    $('list').innerHTML = '<div class="empty">데이터를 불러오지 못했어요.<br>인터넷 연결을 확인하고 새로고침해 주세요.</div>';
-  });
+    if (d.partial) full.then(function (fd) {
+      var keepPick = shownPickId;
+      setData(fd);
+      var ids = {}; fd.items.forEach(function (i) { ids[i.id] = 1; });
+      Object.keys(liked).forEach(function (k) { if (!ids[k]) delete liked[k]; });
+      store.set('ar_liked', liked);
+      shownPickId = keepPick;
+      render(); renderCircles();
+    }).catch(function () { /* 전체 목록을 못 받아도 첫 화면은 그대로 */ });
+    else {
+      var ids = {}; d.items.forEach(function (i) { ids[i.id] = 1; });
+      Object.keys(liked).forEach(function (k) { if (!ids[k]) delete liked[k]; });
+      store.set('ar_liked', liked);
+    }
+  }).catch(loadFail);
 })();
