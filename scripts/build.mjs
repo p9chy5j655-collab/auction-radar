@@ -948,6 +948,7 @@ function itemPage(it, trades, similar, demo, updatedAt) {
 <title>${esc(title)} | 경매레이더</title>
 <meta name="description" content="${esc(desc)}">
 ${canonical ? `<link rel="canonical" href="${esc(canonical)}">` : ''}
+${it.lowValue ? '<meta name="robots" content="noindex,follow">' : ''}
 <meta property="og:title" content="${esc(title)}">
 <meta property="og:description" content="${esc(desc)}">
 <meta property="og:image" content="${esc(it.og ? SITE + it.og : it.thumb ? (SITE + it.thumb) : (SITE ? SITE + '/og.png' : '../og.png'))}">
@@ -960,7 +961,7 @@ ${it.og ? '<meta property="og:image:width" content="1200"><meta property="og:ima
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
 <link rel="stylesheet" href="../style.css">
 </head>
-<body>
+<body class="item-page">
 <div class="app">
 <div class="topbar">
 <a class="icon-btn" href="../${G ? 'index' : 'realestate'}.html" aria-label="목록으로"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></a>
@@ -982,7 +983,7 @@ ${(() => {
 })()}
 </div>
 
-<section class="card-block">
+<section class="card-block item-head">
 <div class="badges">
 <span class="badge">${esc(catName(it))}</span>
 ${it.prop ? `<span class="badge">${esc(it.prop)} 공매</span>` : ''}
@@ -1277,6 +1278,9 @@ async function main() {
       it.thumb = `/t/${it._thumbFile}`;
     }
   }
+  // 검색엔진에 내보낼 가치가 낮은 페이지(권리·재고, 함정 물건, 목록 밖이면서 사진 없는 물건)는 검색 제외
+  { const listedIds = new Set(listed.map((x) => x.id));
+    for (const it of items) it.lowValue = (['right', 'stock'].includes(it.sub) || !!it.trap || (!listedIds.has(it.id) && !it.thumb)) || undefined; }
   // 카톡 공유 카드: 동산·차량(권리·재고 제외)과 우선순위 높은 부동산 600건만 만들어요 (scripts/og.py가 그림을 그려요)
   const OG_MAX_RE = Number(process.env.OG_MAX_RE || 600);
   const ogTargets = [...gList.filter((it) => !['right', 'stock'].includes(it.sub)), ...rList.slice(0, OG_MAX_RE)].filter((it) => it.min);
@@ -1294,7 +1298,7 @@ async function main() {
   log(`공유 카드 대상 ${ogJobs.length}건`);
 
   const slim = listed.map((it) => {
-    const { pnu, evc, how, org, req, land, bld, url, prop, alc, key, addr, mod, stat, src, _thumbFile, _gallery, gallery, photos, spec, og, ...rest } = it;
+    const { pnu, evc, how, org, req, land, bld, url, prop, alc, key, addr, mod, stat, src, _thumbFile, _gallery, gallery, photos, spec, og, lowValue, ...rest } = it;
     return { ...rest, risk: risksOf(it).filter(([h]) => h !== '시세 비교 없음' && !h.startsWith('명도')).length };
   });
   const gRes = results.filter((r) => (r.cat === 'goods' || r.cat === 'car') && r.t).slice(0, 20);
@@ -1343,9 +1347,14 @@ async function main() {
     if (!Gx && similar.length < 2) similar.push(...items.filter((s) => same(s) && s.sd === it.sd && !similar.includes(s)).slice(0, 4 - similar.length));
     await fs.writeFile(path.join(DIST, 'item', `${it.id}.html`), itemPage(it, tradeDetail[it.id] || [], similar, demo, updatedAt));
   }
+  // Cloudflare Pages는 한 사이트에 파일 2만 개까지라 미리 확인해요 (공유 카드는 다음 단계에서 더해져요)
+  { let n = 0; const walk = async (d) => { for (const e of await fs.readdir(d, { withFileTypes: true })) { if (e.isDirectory()) await walk(path.join(d, e.name)); else n++; } };
+    await walk(DIST); n += items.filter((it) => it.og).length;
+    log(`배포 파일 약 ${n.toLocaleString('ko-KR')}개 (한도 20,000)${n > 18000 ? ' ⚠ 한도에 가까워요. LIST_MAX·OG_MAX_RE를 줄이세요.' : ''}`); }
 
   if (SITE) {
-    const urls = [`${SITE}/`, `${SITE}/realestate.html`, `${SITE}/report.html`, `${SITE}/guide.html`, `${SITE}/terms.html`, `${SITE}/privacy.html`, ...items.map((it) => `${SITE}/item/${it.id}.html`)];
+    const urls = [`${SITE}/`, `${SITE}/realestate.html`, `${SITE}/report.html`, `${SITE}/guide.html`, `${SITE}/terms.html`, `${SITE}/privacy.html`, ...items.filter((it) => !it.lowValue).map((it) => `${SITE}/item/${it.id}.html`)];
+    log(`사이트맵 ${urls.length}개 (검색 제외 ${items.filter((it) => it.lowValue).length}개)`);
     await fs.writeFile(path.join(DIST, 'sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map((u) => `<url><loc>${esc(u)}</loc></url>`).join('\n')}\n</urlset>\n`);
     await fs.writeFile(path.join(DIST, 'robots.txt'), `User-agent: *\nAllow: /\nSitemap: ${SITE}/sitemap.xml\n`);
   } else {

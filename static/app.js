@@ -282,7 +282,7 @@
   function badgesOf(it) {
     // 카드당 배지는 최대 2개: 마감·예정 1개 + 새로 들어옴/주의 1개
     var b = [], h = hoursLeft(it);
-    if (notStarted(it)) b.push('<span class="badge badge-blue">' + esc(ddayLabel(it)) + '</span>');
+    if (notStarted(it)) b.push('<span class="badge badge-soon">' + esc(ddayLabel(it)) + '</span>');
     else if (h <= 72) b.push('<span class="badge badge-red">' + esc(ddayLabel(it)) + '</span>');
     else if (isFinite(h)) b.push('<span class="badge">' + esc(ddayLabel(it)) + '</span>');
     if (it.risk) b.push('<span class="badge badge-warn">주의 ' + it.risk + '</span>');
@@ -563,7 +563,7 @@
     var opts = rates.map(function (x) { return { rate: x, price: x === r.rate ? r.price : Math.round(r.appr * x / 100 / 1e5) * 1e5, ok: x === r.rate }; })
       .sort(function (a, b) { return a.price - b.price; });
     quiz.opts = opts; quiz.r = r; quiz.answered = false;
-    var region = [shortSido(r.sd), r.sgg].filter(Boolean).join(' ');
+    var region = [shortSido(r.sd), r.sgg].filter(function (x) { return x && x !== '기타'; }).join(' ');
     var what = [r.use, r.area ? (Math.round(r.area * 10) / 10) + '㎡' + (r.area >= 10 && /home|shop/.test(r.cat) ? ' (약 ' + Math.round(r.area / 3.3058) + '평)' : '') : ''].filter(Boolean).join(' · ');
     var facts = [
       kday(r.dt) ? ['언제', kday(r.dt) + ' 개찰'] : null,
@@ -760,7 +760,9 @@
     if (ds.qa) { answerQuiz(+ds.qa); return; }
     if (b.id === 'quizNext') { quiz.i++; renderQuiz(); return; }
     if (b.id === 'quizShare') {
-      var txt = '이 물건 공매에서 얼마에 팔렸을까? 맞혀 봐!\n' + quiz.r.t + ' (감정가 ' + won(quiz.r.appr) + ')';
+      var sc2 = store.get('ar_quiz', { right: 0, total: 0, streak: 0 });
+      var txt = (sc2.total ? '나는 경매레이더 \'얼마에 팔렸을까?\'에서 ' + sc2.total + '문제 중 ' + sc2.right + '개 맞혔어. ' : '') +
+        '이거 실제 공매에서 얼마에 팔렸게?\n' + quiz.r.t + ' · 감정가 ' + won(quiz.r.appr) + '원';
       var u = location.origin + location.pathname;
       if (navigator.share) navigator.share({ title: '얼마에 팔렸을까?', text: txt, url: u }).catch(function () {});
       else if (navigator.clipboard) navigator.clipboard.writeText(txt + '\n' + u).then(function () { toast('문제를 복사했어요. 카톡에 붙여넣어 보세요.'); });
