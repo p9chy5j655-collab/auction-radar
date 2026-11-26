@@ -10,6 +10,7 @@
   function won(v) {
     if (v == null || !isFinite(v)) return '-';
     var neg = v < 0; v = Math.abs(v);
+    if (v > 0 && v < 10000) return (neg ? '−' : '') + Math.round(v).toLocaleString('ko-KR') + '원';
     var man = Math.round(v / 10000), s;
     if (man >= 10000) { var eok = Math.floor(man / 10000), rest = man % 10000; s = eok + '억' + (rest ? ' ' + rest.toLocaleString('ko-KR') + '만' : '') + '원'; }
     else s = man.toLocaleString('ko-KR') + '만원';
@@ -119,8 +120,10 @@
 
   // 내 입찰가 판정
   var bidInput = $('bid');
-  bidInput.value = it.min ? Math.round(it.min / 10000) : '';
-  var quick = [['최저가로', function () { return it.min ? Math.round(it.min / 10000) : 0; }]];
+  // 만원 단위로 올림해서 넣어요 (내림하면 최저가보다 낮아져 입찰할 수 없는 금액이 돼요)
+  var minMan = it.min ? Math.ceil(it.min / 10000) : '';
+  bidInput.value = minMan;
+  var quick = [['최저가로', function () { return minMan || 0; }]];
   // (가이드가 없는 물건은 계산 결과가 있어야 버튼을 보여줘요)
   quick.push([GUIDE ? '가이드 상한으로' : '최대 입찰가로', function () { return maxBid ? Math.round(maxBid / 10000) : 0; }, 'max']);
   var G = it.cat === 'goods' || it.cat === 'car';
@@ -258,14 +261,17 @@
     var taxRate = (val('mbTax') + val('mbFee')) / 100;
     if (!document.getElementById('mbTax') && (it.cat === 'car' && it.sub !== 'heavy')) taxRate = 0.07;
     var fixedCost = (val('mbRepair') + val('mbEvict')) * 10000;
+    var ownCost = !isRE && !document.getElementById('mbRepair');
     var cash = store.get('ar_cash', '');
     var loan = isRE ? store.get('ar_loan', 50) : 0;
     box.innerHTML = '<div class="form-grid"><label>내가 쓸 수 있는 현금<span class="input-row sm"><input id="cash" type="number" inputmode="numeric" value="' + cash + '" placeholder="' + (isRE ? '예: 10000' : '예: 300') + '"><span>만원</span></span></label>' +
+      (ownCost ? '<label>운반·수리 등 예상 비용<span class="input-row sm"><input id="mvCost" type="number" inputmode="numeric" min="0" value="' + (store.get('ar_mv', '') || '') + '" placeholder="예: 10"><span>만원</span></span></label>' : '') +
       (isRE ? '<label>대출 예상 비율<span class="input-row sm"><input id="loan" type="number" inputmode="decimal" min="0" max="90" value="' + loan + '"><span>%</span></span></label>' : '') + '</div><div id="moneyOut" class="money-out"></div>';
     box.hidden = false;
     function out() {
       var c = (parseFloat($('cash').value) || 0) * 10000, l = isRE ? (parseFloat($('loan').value) || 0) / 100 : 0;
       store.set('ar_cash', $('cash').value); if (isRE) store.set('ar_loan', $('loan').value);
+      if (ownCost) { fixedCost = (parseFloat($('mvCost').value) || 0) * 10000; store.set('ar_mv', $('mvCost').value); }
       var deposit = bid * 0.1, rest = bid - deposit, loanAmt = rest * l, extra = bid * taxRate + fixedCost;
       var need = deposit + (rest - loanAmt) + extra;
       $('moneyOut').innerHTML =
@@ -276,7 +282,7 @@
         '<div class="mo-row"><span>③ ' + (isRE ? '세금·등기비·수리·명도비' : (it.cat === 'car' && it.sub !== 'heavy') ? '이전등록비(약 7%)' : '운반·수리비') + '</span><b>' + won(extra) + '</b></div>' +
         '<div class="mo-row total"><span>내 돈으로 필요한 금액</span><b>' + won(need) + '</b></div>' +
         (c ? '<p class="' + (c >= need ? 'mo-ok' : 'mo-bad') + '">' + (c >= need ? '현금으로 충분해요. 여유 ' + won(c - need) : won(need - c) + (isRE ? ' 부족해요. 입찰가나 대출 계획을 다시 생각해 보세요.' : ' 부족해요. 동산은 대출이 어려우니 입찰가를 낮춰 보세요.')) + '</p>' : '') +
-        '<p class="note">' + (isRE ? '③은 위 계산기의 세금·수리·명도비예요. 대출은 낙찰 후 심사라 안 나올 수도 있어요. ' : (it.cat === 'car' && it.sub !== 'heavy') ? '③은 취득세 등 약 7%만 넣었어요. 탁송·수리비는 따로 더하세요. ' : '③은 따로 넣은 운반·수리비가 없으면 0원이에요. ') + '잔금 납부 기한은 공고문에서 확인하세요.</p>';
+        '<p class="note">' + (isRE ? '③은 위 계산기의 세금·수리·명도비예요. 대출은 낙찰 후 심사라 안 나올 수도 있어요. ' : (it.cat === 'car' && it.sub !== 'heavy') ? '③은 취득세 등 약 7%만 넣었어요. 탁송·수리비는 따로 더하세요. ' : '③은 위에 직접 넣은 예상 비용이에요. ') + '잔금 납부 기한은 공고문에서 확인하세요.</p>';
     }
     box.addEventListener('input', out); out();
   }
@@ -307,7 +313,7 @@
         window.open('https://calendar.google.com/calendar/render?action=TEMPLATE&text=' + encodeURIComponent(c.title) + '&dates=' + utcStamp(c.start) + '/' + utcStamp(c.end) + '&details=' + encodeURIComponent(c.desc), '_blank', 'noopener');
       } else {
         var ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//auction-radar//KO', 'BEGIN:VEVENT', 'UID:' + it.id + '@auction-radar', 'DTSTAMP:' + utcStamp(new Date()), 'DTSTART:' + utcStamp(c.start), 'DTEND:' + utcStamp(c.end),
-          'SUMMARY:' + c.title.replace(/[,;]/g, ' '), 'DESCRIPTION:' + c.desc.replace(/\n/g, '\\n').replace(/[,;]/g, ' '),
+          'SUMMARY:' + c.title.replace(/\\/g, '\\\\').replace(/([,;])/g, '\\$1'), 'DESCRIPTION:' + c.desc.replace(/\n/g, '\\n').replace(/[,;]/g, ' '),
           'BEGIN:VALARM', 'TRIGGER:-P1D', 'ACTION:DISPLAY', 'DESCRIPTION:내일 입찰 마감', 'END:VALARM', 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
         var url = URL.createObjectURL(new Blob([ics], { type: 'text/calendar' }));
         var dl = document.createElement('a'); dl.href = url; dl.download = '입찰마감.ics'; document.body.appendChild(dl); dl.click(); dl.remove();
