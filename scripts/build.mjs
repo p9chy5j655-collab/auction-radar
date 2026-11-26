@@ -939,7 +939,8 @@ function goodsGuide(it, kw) {
   }
   if (!hi) hi = lo;
   if (hi && hi < lo) hi = lo;
-  const r10 = (v) => (v == null ? null : Math.round(v / 1e4) * 1e4);
+  // 만원 단위로 맞추되, 최저 입찰가보다 낮아지지 않게 (1만원 미만 물건은 그대로)
+  const r10 = (v) => (v == null ? null : it.min < 1e4 ? Math.max(it.min, Math.round(v)) : Math.max(Math.ceil(it.min / 1e4) * 1e4, Math.round(v / 1e4) * 1e4));
   return { lines, lo: r10(lo), hi: r10(hi), note, hot, carFee: isCarIt(it), capUsed: !!(it.newp && conf && note[2] < 1) };
 }
 
@@ -1101,7 +1102,7 @@ ${!G && !isTrap(it) && it.rr && it.rr.n >= 5 && it.appr && it.min && it.appr * i
 
 ${it.mkt && !isTrap(it) ? `<section class="card-block" id="mktSec">
 <h2>같은 단지 시세와 비교</h2>
-<p class="muted small">같은 단지(${esc(it.mkt.apt || it.emd)}) 비슷한 면적(${it.bld}㎡ 안팎)의 최근 3개월 실거래 ${it.mkt.n}건 기준이에요.</p>
+<p class="muted small">같은 단지(${esc(it.mkt.apt || it.emd)}) 비슷한 면적(${Math.round(it.bld * 10) / 10}㎡ 안팎)의 최근 3개월 실거래 ${it.mkt.n}건 기준이에요.</p>
 <div class="compare">
 <div><span class="muted small">실거래 중간값</span><b>${won(it.mkt.med)}</b></div>
 <div><span class="muted small">최저 입찰가는</span><b class="${it.mkt.ratio <= 80 ? 'orange' : ''}">시세의 ${it.mkt.ratio}%</b></div>
