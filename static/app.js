@@ -731,7 +731,13 @@
   function renderResults() {
     var rs = data.results || [];
     $('resultsWrap').hidden = !rs.length;
-    $('results').innerHTML = rs.slice(0, MODE === 'goods' ? 3 : 5).map(function (r) {
+    var rsS = data.resStats && (MODE === 'goods' ? data.resStats.g : data.resStats.re);
+    var sumEl = $('resSum');
+    if (sumEl) {
+      sumEl.hidden = !(rsS && rsS.n >= 5 && rsS.med);
+      if (!sumEl.hidden) sumEl.innerHTML = '최근 2주 ' + (MODE === 'goods' ? '동산·차량' : '부동산') + ' <b>' + rsS.n.toLocaleString('ko-KR') + '건</b>이 낙찰됐고, 낙찰가는 감정가의 <b>중간 ' + rsS.med + '%</b>였어요.' + (rsS.comp ? ' 그중 ' + rsS.comp.toLocaleString('ko-KR') + '건은 2명 이상이 경쟁했어요.' : '');
+    }
+    $('results').innerHTML = rs.slice(0, MODE === 'goods' ? 5 : 5).map(function (r) {
       var over = r.rate > 100;
       return '<div class="result-card"><div class="row-between"><b class="rc-title">' + esc(r.t) + '</b><span class="rc-tag ' + (over ? 'over' : r.rate < 70 ? 'low' : r.bidders >= 3 ? '' : 'low') + '">' + (over ? '감정가보다 높게' : r.bidders >= 3 ? r.bidders + '명 경쟁' : r.rate < 90 ? '감정가보다 낮게' : '감정가 근처') + '</span></div>' +
         '<div class="rc-line">감정 ' + won(r.appr) + ' → <strong>' + won(r.price) + '</strong><span class="rc-rate">' + r.rate + '%</span></div>' +

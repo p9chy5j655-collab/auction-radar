@@ -7,6 +7,7 @@ import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sampleItems, sampleResults } from './sample.mjs';
+import { buildCollections } from './collections.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DIST = path.join(ROOT, 'dist');
@@ -895,7 +896,7 @@ ${results.length ? `<section class="card-block"><h2>최근 이렇게 낙찰됐�
 <textarea id="copyText" class="copy-box" readonly>${esc(text)}</textarea>
 <button class="btn-primary" id="copyBtn" type="button">내용 복사하기</button>
 </section>
-<p class="disclaimer">출처: 한국자산관리공사 온비드(공공데이터포털). 순위는 공개 데이터로 자동 계산한 참고 정보이며 투자 권유가 아니에요. 입찰 전 반드시 온비드 원문 공고를 확인하세요.<br><a href="terms.html">이용약관·면책</a></p>
+<p class="disclaimer">출처: 한국자산관리공사 온비드(공공데이터포털). 순위는 공개 데이터로 자동 계산한 참고 정보이며 투자 권유가 아니에요. 입찰 전 반드시 온비드 원문 공고를 확인하세요.<br><a href="c/index.html">지역·종류별 모아보기</a> · <a href="about.html">사이트 소개·문의</a> · <a href="terms.html">이용약관·면책</a></p>
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script>
@@ -1232,8 +1233,9 @@ ${it.mkt ? '<div class="stat"><span class="muted small">입찰보증금(10%)</sp
 </details>
 
 ${similar.length ? `<section class="card-block no-pad-x"><h2 class="pad-x">비슷한 물건</h2><div class="scroller">${simCards}</div></section>` : ''}
+${it._coll ? `<a class="coll-link" href="${esc(it._coll.href)}"><span>${esc(it._coll.name)}</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></a>` : ''}
 
-<p class="disclaimer">출처: 한국자산관리공사 온비드, 국토교통부 실거래가 공개시스템(공공데이터포털). 데이터 기준 ${esc(kdate(updatedAt))}. 정보에 오류가 있을 수 있으니 입찰 전 반드시 온비드 원문 공고를 확인하세요. 계산 결과는 참고용이며 낙찰이나 수익을 보장하지 않아요.<br><a href="../terms.html">이용약관·면책</a> · <a href="../privacy.html">개인정보처리방침</a></p>
+<p class="disclaimer">출처: 한국자산관리공사 온비드, 국토교통부 실거래가 공개시스템(공공데이터포털). 데이터 기준 ${esc(kdate(updatedAt))}. 정보에 오류가 있을 수 있으니 입찰 전 반드시 온비드 원문 공고를 확인하세요. 계산 결과는 참고용이며 낙찰이나 수익을 보장하지 않아요.<br><a href="../c/index.html">지역·종류별 모아보기</a> · <a href="../about.html">사이트 소개·문의</a> · <a href="../terms.html">이용약관·면책</a> · <a href="../privacy.html">개인정보처리방침</a></p>
 
 <div class="bottom-bar">
 <button class="btn-outline" id="like2">관심 등록</button>
@@ -1415,11 +1417,19 @@ async function main() {
     const { pnu, evc, how, org, req, land, bld, url, prop, alc, key, addr, mod, stat, src, _thumbFile, _bigFile, big, _gallery, gallery, photos, spec, og, lowValue, ...rest } = it;
     return { ...rest, risk: risksOf(it).filter(([h]) => h !== '시세 비교 없음' && !h.startsWith('명도')).length };
   });
-  const gRes = results.filter((r) => (r.cat === 'goods' || r.cat === 'car') && r.t).slice(0, 20);
+  // 첫 화면 '최근 이렇게 팔렸어요': 사람들이 신기해할 종류(명품·금·차·전자)와 경쟁이 붙은 사례를 먼저
+  const FUN_SUB = { luxury: 4, gold: 3, car: 3, elec: 2, bike: 2, living: 1 };
+  const gRes = results.filter((r) => (r.cat === 'goods' || r.cat === 'car') && r.t && !['right', 'stock'].includes(r.sub) && !/미상|원문 확인/.test(r.t))
+    .sort((a, b) => ((FUN_SUB[b.sub] || 0) - (FUN_SUB[a.sub] || 0)) || ((b.bidders || 0) - (a.bidders || 0)) || (b.price - a.price)).slice(0, 20);
+  const medOf = (a) => { if (!a.length) return null; const x = [...a].sort((p, q) => p - q); const m = x.length >> 1; return x.length % 2 ? x[m] : Math.round((x[m - 1] + x[m]) / 2); };
+  const gAll = results.filter((r) => (r.cat === 'goods' || r.cat === 'car') && !['right', 'stock'].includes(r.sub));
+  const rAll = results.filter((r) => !(r.cat === 'goods' || r.cat === 'car'));
+  const resStats = { g: { n: gAll.length, med: medOf(gAll.map((r) => r.rate)), comp: gAll.filter((r) => r.bidders >= 2).length },
+    re: { n: rAll.length, med: medOf(rAll.map((r) => r.rate)), comp: rAll.filter((r) => r.bidders >= 2).length } };
   const recentResults = [...gRes, ...results.filter((r) => r.cat !== 'goods' && r.cat !== 'car').slice(0, 12)];
   await fs.writeFile(path.join(DIST, 'data', 'items.json'), JSON.stringify({
     updatedAt, demo, hasGoods: items.some((i) => i.cat === 'goods'), hasCar: items.some((i) => i.cat === 'car'),
-    hasRank: items.some((i) => i.rank), total: items.length, results: recentResults, items: slim
+    hasRank: items.some((i) => i.rank), total: items.length, results: recentResults, resStats, items: slim
   }));
   // 첫 화면용 가벼운 데이터: 동산·차량 + 화면 진열에 쓰는 부동산 일부 + 미리 센 숫자. 전체 목록은 뒤에서 따로 받아요.
   {
@@ -1438,7 +1448,7 @@ async function main() {
     };
     await fs.writeFile(path.join(DIST, 'data', 'home.json'), JSON.stringify({
       updatedAt, demo, partial: true, stats, hasGoods: items.some((i) => i.cat === 'goods'), hasCar: items.some((i) => i.cat === 'car'),
-      hasRank: items.some((i) => i.rank), total: items.length, results: recentResults, items: homeItems
+      hasRank: items.some((i) => i.rank), total: items.length, results: recentResults, resStats, items: homeItems
     }));
     log(`첫 화면 데이터 ${homeItems.length}건`);
     // 검색엔진·느린 폰을 위해 첫 화면 목록 30개를 미리 그려 둬요 (스크립트가 돌면 바로 바뀌어요)
@@ -1456,6 +1466,10 @@ async function main() {
   await fs.writeFile(path.join(DIST, 'data', 'search.json'), JSON.stringify(items.filter((it) => !['right', 'stock'].includes(it.sub) || true)
     .map((it) => [it.id, it.t, SD_SHORT(it.sd), it.sgg || '', it.cat, it.min ?? null, it.rate && it.rate < 100 && !it.trap ? it.rate : 0])));
   await fs.writeFile(path.join(DIST, 'report.html'), reportPage(items, recentResults, demo, updatedAt));
+  // 지역·종류별 모아보기 (/c/)
+  const coll = await buildCollections({ DIST, SITE, ASSET_V, items, results, updatedAt, esc, won, kdate, SD_SHORT });
+  log(`모아보기 페이지 ${coll.count}개`);
+  for (const it of items) it._coll = coll.collOf(it);
 
   for (const it of items) {
     const Gx = it.cat === 'goods' || it.cat === 'car';
@@ -1472,7 +1486,7 @@ async function main() {
     log(`배포 파일 약 ${n.toLocaleString('ko-KR')}개 (한도 20,000)${n > 18000 ? ' ⚠ 한도에 가까워요. LIST_MAX·OG_MAX_RE를 줄이세요.' : ''}`); }
 
   if (SITE) {
-    const urls = [`${SITE}/`, `${SITE}/realestate.html`, `${SITE}/report.html`, `${SITE}/guide.html`, `${SITE}/terms.html`, `${SITE}/privacy.html`, ...items.filter((it) => !it.lowValue).map((it) => `${SITE}/item/${it.id}.html`)];
+    const urls = [`${SITE}/`, `${SITE}/realestate.html`, `${SITE}/report.html`, `${SITE}/guide.html`, `${SITE}/about.html`, ...coll.urls.map((u) => `${SITE}/${u}`), `${SITE}/terms.html`, `${SITE}/privacy.html`, ...items.filter((it) => !it.lowValue).map((it) => `${SITE}/item/${it.id}.html`)];
     log(`사이트맵 ${urls.length}개 (검색 제외 ${items.filter((it) => it.lowValue).length}개)`);
     await fs.writeFile(path.join(DIST, 'sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map((u) => `<url><loc>${esc(u)}</loc></url>`).join('\n')}\n</urlset>\n`);
     await fs.writeFile(path.join(DIST, 'robots.txt'), `User-agent: *\nAllow: /\nSitemap: ${SITE}/sitemap.xml\n`);
