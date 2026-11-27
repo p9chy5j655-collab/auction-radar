@@ -49,7 +49,7 @@ export async function buildCollections({ DIST, SITE, ASSET_V, items, results, up
     if (all.filter(ok).length >= 5) pages.push({ slug: `all-${T.key}`, name: `전국 ${T.name}`, h1: `전국 ${T.name} 공매`, list: all, res: allRes, tip: T.tip, kind: 're', typeKey: T.key, appHref: `../realestate.html?cat=${T.appCat}` });
     for (const sd of SD_ORDER) {
       const list = all.filter((it) => sdOf(it) === sd);
-      if (list.filter(ok).length < 5) continue;
+      if (list.filter(ok).length < 3) continue;
       const label = SD_LABEL[sd] || sd;
       pages.push({ slug: `${SD_SLUG[sd]}-${T.key}`, name: `${label} ${T.name}`, h1: `${label} ${T.name} 공매`, list, res: allRes.filter((r) => SD_SHORT(r.sd) === sd), tip: T.tip, kind: 're', sd, typeKey: T.key,
         appHref: `../realestate.html?cat=${T.appCat}&q=${encodeURIComponent(label.replace('·', ' '))}` });

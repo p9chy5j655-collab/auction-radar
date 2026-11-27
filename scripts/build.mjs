@@ -636,6 +636,9 @@ function sniffImg(b) {
   if (b[0] === 0x89 && b[1] === 0x50) return 'png';
   if (b[0] === 0x47 && b[1] === 0x49) return 'gif';
   if (b[0] === 0x52 && b[1] === 0x49 && b[8] === 0x57) return 'webp';
+  // BMP·TIFF는 브라우저용이 아니라서 Pillow로 JPG로 바꿔요
+  if (b[0] === 0x42 && b[1] === 0x4d) return 'bmp';
+  if ((b[0] === 0x49 && b[1] === 0x49 && b[2] === 0x2a) || (b[0] === 0x4d && b[1] === 0x4d && b[3] === 0x2a)) return 'tif';
   return null;
 }
 // ---------- 큰 사진: 물건상세 API의 사진목록 ----------
@@ -763,8 +766,8 @@ async function downloadThumbs(list) {
         const d = imgDims(buf);
         if (!sizeNote && d) sizeNote = `${d.w}×${d.h}`;
         ok++;
-        if (canResize && (!d || d.w > 600 || d.h > 600)) { await fs.writeFile(path.join(dir, `${h}.src`), buf); bigJobs.push([it, h]); continue; }
-        if (buf.length > 2_000_000) { fail++; ok--; continue; }
+        if (canResize && (!d || d.w > 600 || d.h > 600 || ext === 'bmp' || ext === 'tif')) { await fs.writeFile(path.join(dir, `${h}.src`), buf); bigJobs.push([it, h]); continue; }
+        if (buf.length > 2_000_000 || ext === 'bmp' || ext === 'tif') { fail++; ok--; continue; }
         await fs.writeFile(path.join(dir, `${h}.${ext}`), buf);
         setFile(it, `${h}.${ext}`);
       } catch (e) { fail++; if (!firstFail) firstFail = e.message; }
@@ -1420,7 +1423,7 @@ async function main() {
   // 첫 화면 '최근 이렇게 팔렸어요': 사람들이 신기해할 종류(명품·금·차·전자)와 경쟁이 붙은 사례를 먼저
   const FUN_SUB = { luxury: 4, gold: 3, car: 3, elec: 2, bike: 2, living: 1 };
   const gRes = results.filter((r) => (r.cat === 'goods' || r.cat === 'car') && r.t && !['right', 'stock'].includes(r.sub) && !/미상|원문 확인/.test(r.t))
-    .sort((a, b) => ((FUN_SUB[b.sub] || 0) - (FUN_SUB[a.sub] || 0)) || ((b.bidders || 0) - (a.bidders || 0)) || (b.price - a.price)).slice(0, 20);
+    .sort((a, b) => (/압수물|제품류|일괄|기타/.test(a.t) - /압수물|제품류|일괄|기타/.test(b.t)) || ((FUN_SUB[b.sub] || 0) - (FUN_SUB[a.sub] || 0)) || ((b.bidders || 0) - (a.bidders || 0)) || (b.price - a.price)).slice(0, 20);
   const medOf = (a) => { if (!a.length) return null; const x = [...a].sort((p, q) => p - q); const m = x.length >> 1; return x.length % 2 ? x[m] : Math.round((x[m - 1] + x[m]) / 2); };
   const gAll = results.filter((r) => (r.cat === 'goods' || r.cat === 'car') && !['right', 'stock'].includes(r.sub));
   const rAll = results.filter((r) => !(r.cat === 'goods' || r.cat === 'car'));
