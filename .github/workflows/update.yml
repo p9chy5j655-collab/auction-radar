@@ -68,7 +68,9 @@ jobs:
           ONBID_CAR_DTL_URL: ${{ vars.ONBID_CAR_DTL_URL }}
           NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
           NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
-        run: node scripts/build.mjs
+        run: |
+          python3 -c "import PIL" 2>/dev/null || pip install -q pillow
+          node scripts/build.mjs
 
       - name: 공유 카드 캐시
         uses: actions/cache@v4

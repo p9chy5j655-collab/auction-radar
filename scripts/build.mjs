@@ -2,6 +2,8 @@
 // 온비드·실거래가 공공데이터를 받아 정적 사이트(dist/)를 만듭니다.
 // 인증키(DATA_GO_KR_KEY)가 없으면 예시 데이터로 만듭니다.
 import fs from 'node:fs/promises';
+import fssync from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sampleItems, sampleResults } from './sample.mjs';
@@ -29,9 +31,9 @@ const RESULT_TYPES = (process.env.ONBID_RESULT_CLTR_TYPES || '0001,0002,0003').s
 const RLST_URL = 'https://apis.data.go.kr/B010003/OnbidRlstListSrvc2/getRlstCltrList2';
 // 물건상세 조회서비스(사진목록 포함). 공공데이터포털에서 각각 활용신청이 필요해요. 주소가 다르면 변수로 바꿔요.
 const DTL_URL = {
-  re: (process.env.ONBID_RLST_DTL_URL || `${B}/OnbidRlstDtlSrvc2/getRlstCltrDtl2`).trim(),
-  goods: (process.env.ONBID_GOODS_DTL_URL || `${B}/OnbidMvastDtlSrvc2/getMvastCltrDtl2`).trim(),
-  car: (process.env.ONBID_CAR_DTL_URL || `${B}/OnbidCarDtlSrvc2/getCarCltrDtl2`).trim()
+  re: (process.env.ONBID_RLST_DTL_URL || `${B}/OnbidRlstDtlSrvc2/getRlstDtlInf2`).trim(),
+  goods: (process.env.ONBID_GOODS_DTL_URL || `${B}/OnbidMvastDtlSrvc2/getMvastDtlInf2`).trim(),
+  car: (process.env.ONBID_CAR_DTL_URL || `${B}/OnbidCarDtlSrvc2/getCarDtlInf2`).trim()
 };
 const TRADE_URL = 'https://apis.data.go.kr/1613000/RTMSDataSvcAptTrade/getRTMSDataSvcAptTrade';
 const PROP_CODES = '0007,0010,0005,0002,0008,0003,0006,0011,0013';
@@ -649,13 +651,29 @@ function imageUrlsIn(obj, out = []) {
   if (typeof obj === 'object') for (const v of Object.values(obj)) imageUrlsIn(v, out);
   return out;
 }
+// 상세 API의 사진목록(potoUrlList)만 써요. 감정평가서 같은 첨부파일 주소가 섞이지 않게 해요.
+// 주소 끝의 downloadImageKind=THNL_NM(178×134 썸네일)을 빼면 원본(보통 2400×1800)이 와요.
+function photoUrlsIn(json, text) {
+  const out = [];
+  const walk = (o) => {
+    if (!o || typeof o !== 'object') return;
+    if (Array.isArray(o)) { o.forEach(walk); return; }
+    for (const [k, v] of Object.entries(o)) {
+      if (k === 'potoUrlList' && Array.isArray(v)) { for (const p of v) if (p && p.urlAdr) out.push(String(p.urlAdr)); }
+      else walk(v);
+    }
+  };
+  if (json) walk(json);
+  else for (const m of String(text || '').matchAll(/<potoUrlList>[\s\S]*?<urlAdr>([^<]+)<\/urlAdr>/g)) out.push(m[1]);
+  return out.map((u) => u.replace(/&amp;/g, '&').replace(/[?&]downloadImageKind=[A-Z_]+/, '')).filter((u) => /^https?:\/\//.test(u));
+}
 async function attachPhotos(list) {
   const dir = path.join(CACHE, 'detail');
   await fs.mkdir(dir, { recursive: true });
   const file = path.join(dir, 'photos.json');
   let cache = {};
   try { cache = JSON.parse(await fs.readFile(file, 'utf8')); } catch { /* 처음 */ }
-  const MAX = Number(process.env.DETAIL_MAX_CALLS || 300); // 한 번 빌드에 부르는 최대 횟수
+  const MAX = Number(process.env.DETAIL_MAX_CALLS || 450); // 한 번 빌드에 부르는 최대 횟수
   const DAY_MAX = Number(process.env.DETAIL_DAY_MAX || 900); // 종류별 하루 최대 (개발계정 하루 1,000건 한도 안에서)
   const today = kstNow().toISOString().slice(0, 10);
   const day = cache.__day && cache.__day.d === today ? cache.__day : { d: today, n: {} };
@@ -664,7 +682,7 @@ async function attachPhotos(list) {
   let calls = 0, found = 0, firstErr = '';
   const kindOf = (it) => (it.cat === 'goods' ? 'goods' : it.cat === 'car' ? 'car' : 're');
   for (const it of list) {
-    const c = cache[it.id];
+    const c = cache[it.id] && cache[it.id].v === 2 ? cache[it.id] : null;
     if (c && (c.p.length || Date.now() - c.t < 7 * 864e5)) { if (c.p.length) it.photos = c.p; continue; }
     const k = kindOf(it);
     if (dead[k] || calls >= MAX || !DTL_URL[k] || (day.n[k] || 0) >= DAY_MAX) continue;
@@ -672,8 +690,8 @@ async function attachPhotos(list) {
     try {
       calls++; day.n[k] = (day.n[k] || 0) + 1;
       const { json, text } = await callApi(DTL_URL[k], { cltrMngNo: it.key || mng, pbctCdtnNo: cdtn, resultType: 'json', pageNo: 1, numOfRows: 10 }, { tries: 1, raw: true });
-      const urls = [...new Set(imageUrlsIn(json || text))].filter((u) => u !== it.src).slice(0, 8);
-      cache[it.id] = { t: Date.now(), p: urls };
+      const urls = [...new Set(photoUrlsIn(json, text))].slice(0, k === 're' ? 3 : 4);
+      cache[it.id] = { v: 2, t: Date.now(), p: urls };
       if (urls.length) { it.photos = urls; found++; }
     } catch (e) {
       if (!firstErr) firstErr = `${k}: ${e.message}`;
@@ -694,7 +712,9 @@ async function downloadThumbs(list) {
   await fs.mkdir(dir, { recursive: true });
   const { createHash } = await import('node:crypto');
   const have = new Set(await fs.readdir(dir).catch(() => []));
-  const MAX_NEW = Number(process.env.THUMB_MAX_NEW || 1500);
+  const MAX_NEW = Number(process.env.THUMB_MAX_NEW || 900);
+  let canResize = false;
+  try { execFileSync('python3', ['-c', 'import PIL'], { stdio: 'ignore' }); canResize = true; } catch { log('Pillow가 없어 큰 사진을 줄이지 못해요. 큰 사진은 건너뛰어요.'); }
   const jobs = [];
   // 큰 사진이 있으면 그걸 대표 사진으로, 나머지는 상세 화면 갤러리용(최대 4장)
   const expanded = [];
@@ -708,6 +728,7 @@ async function downloadThumbs(list) {
   for (const it of expanded) {
     if (!it.src) continue;
     const h = createHash('sha1').update(it.src).digest('hex').slice(0, 16);
+    if (have.has(`${h}_s.jpg`) && have.has(`${h}.jpg`)) { setFile(it, `${h}.jpg`, `${h}_s.jpg`); continue; }
     const hit = [...['jpg', 'png', 'gif', 'webp']].map((e) => `${h}.${e}`).find((f) => have.has(f));
     if (hit) { setFile(it, hit); continue; }
     // 실패 기록은 7일이 지나면 다시 시도해요
@@ -718,7 +739,12 @@ async function downloadThumbs(list) {
     jobs.push([it, h]);
   }
   let ok = 0, fail = 0, firstFail = '', sizeNote = '';
-  function setFile(x, f) { if (x._owner) (x._owner._gallery = x._owner._gallery || []).push(f); else x._thumbFile = f; }
+  const bigJobs = []; // 줄일 원본 [it, h]
+  // 큰 사진은 목록 카드용 작은 사진(_s)과 상세 화면용 큰 사진을 따로 써요
+  function setFile(x, f, small) {
+    if (x._owner) (x._owner._gallery = x._owner._gallery || []).push(f);
+    else { x._thumbFile = small || f; x._bigFile = small ? f : undefined; }
+  }
   let i = 0;
   async function worker() {
     while (i < Math.min(jobs.length, MAX_NEW)) {
@@ -727,22 +753,35 @@ async function downloadThumbs(list) {
         const res = await fetch(it.src, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36', Accept: 'image/*,*/*' }, signal: AbortSignal.timeout(15000) });
         const buf = new Uint8Array(await res.arrayBuffer());
         const ext = res.ok && buf.length > 200 ? sniffImg(buf) : null;
-        if (!ext || buf.length > 2_000_000) {
+        if (!ext || buf.length > 15_000_000) {
           fail++;
           if (!firstFail) firstFail = `상태 ${res.status}, 형식 ${res.headers.get('content-type')}, ${buf.length}바이트`;
           if (res.ok) await fs.writeFile(path.join(dir, `${h}.none`), '');
           continue;
         }
+        const d = imgDims(buf);
+        if (!sizeNote && d) sizeNote = `${d.w}×${d.h}`;
+        ok++;
+        if (canResize && (!d || d.w > 600 || d.h > 600)) { await fs.writeFile(path.join(dir, `${h}.src`), buf); bigJobs.push([it, h]); continue; }
+        if (buf.length > 2_000_000) { fail++; ok--; continue; }
         await fs.writeFile(path.join(dir, `${h}.${ext}`), buf);
-        setFile(it, `${h}.${ext}`); ok++;
-        if (!sizeNote) { const d = imgDims(buf); if (d) sizeNote = `${d.w}×${d.h}`; }
+        setFile(it, `${h}.${ext}`);
       } catch (e) { fail++; if (!firstFail) firstFail = e.message; }
     }
   }
   await Promise.all([worker(), worker(), worker(), worker(), worker(), worker()]);
+  // 큰 원본은 Pillow로 줄여요 (상세용 긴 변 1080px, 목록용 480px)
+  for (let b = 0; b < bigJobs.length; b += 200) {
+    const part = bigJobs.slice(b, b + 200);
+    try { execFileSync('python3', [path.join(ROOT, 'scripts', 'resize.py'), dir, ...part.map(([, h]) => h)], { stdio: 'inherit' }); } catch (e) { log('사진 줄이기 실패', e.message); }
+    for (const [it, h] of part) {
+      if (fssync.existsSync(path.join(dir, `${h}.jpg`)) && fssync.existsSync(path.join(dir, `${h}_s.jpg`))) setFile(it, `${h}.jpg`, `${h}_s.jpg`);
+      else fail++;
+    }
+  }
   log(`사진: 새로 받음 ${ok}장${sizeNote ? ` (예: ${sizeNote})` : ''}, 실패 ${fail}장, 남은 대기 ${Math.max(0, jobs.length - MAX_NEW)}장${firstFail ? ` (첫 실패: ${firstFail})` : ''}`);
   // 60일 넘게 안 쓰인 사진 캐시는 정리
-  const used = new Set(list.flatMap((it) => [it._thumbFile, ...(it._gallery || [])]).filter(Boolean));
+  const used = new Set(list.flatMap((it) => [it._thumbFile, it._bigFile, ...(it._gallery || [])]).filter(Boolean));
   for (const f of await fs.readdir(dir)) {
     if (used.has(f)) continue;
     const st = await fs.stat(path.join(dir, f));
@@ -1020,7 +1059,7 @@ ${canonical ? `<link rel="canonical" href="${esc(canonical)}">` : ''}
 ${it.lowValue ? '<meta name="robots" content="noindex,follow">' : ''}
 <meta property="og:title" content="${esc(title)}">
 <meta property="og:description" content="${esc(desc)}">
-<meta property="og:image" content="${esc(it.og ? SITE + it.og : it.thumb ? (SITE + it.thumb) : (SITE ? SITE + '/og.png' : '../og.png'))}">
+<meta property="og:image" content="${esc(it.og ? SITE + it.og : (it.big || it.thumb) ? (SITE + (it.big || it.thumb)) : (SITE ? SITE + '/og.png' : '../og.png'))}">
 ${it.og ? '<meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">' : ''}
 <meta name="twitter:card" content="summary_large_image">
 <meta name="theme-color" content="#ffffff">
@@ -1045,7 +1084,7 @@ ${demo ? '<div class="demo-bar">지금 보이는 물건은 예시 데이터예�
 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
 <a class="photo-src" href="${esc(it.url)}" target="_blank" rel="noopener">온비드 원문에서 사진 보기</a>
 ${(() => {
-  const pics = [it.thumb, ...(it.gallery || [])].filter(Boolean);
+  const pics = [it.big || it.thumb, ...(it.gallery || [])].filter(Boolean);
   if (!pics.length) return '';
   // 사진을 억지로 늘리지 않게: 흐린 같은 사진을 배경에 깔고, 원본 비율 그대로 가운데에 보여줘요
   return `<div class="gal" id="gal">${pics.map((p, i) => `<figure class="gal-item"><img class="gal-bg" src="${esc(p)}" alt="" aria-hidden="true" loading="${i ? 'lazy' : 'eager'}"><img class="gal-fg" src="${esc(p)}" alt="${esc(it.t)} 사진 ${i + 1}" loading="${i ? 'lazy' : 'eager'}" onerror="this.closest('figure').remove()"></figure>`).join('')}</div>${pics.length > 1 ? `<span class="gal-count" id="galCount">1 / ${pics.length}</span>` : ''}<span class="gal-src">출처: 온비드</span>`;
@@ -1350,6 +1389,7 @@ async function main() {
       if (!it._thumbFile) continue;
       await fs.copyFile(path.join(CACHE, 'thumbs', it._thumbFile), path.join(DIST, 't', it._thumbFile));
       it.thumb = `/t/${it._thumbFile}`;
+      if (it._bigFile) { await fs.copyFile(path.join(CACHE, 'thumbs', it._bigFile), path.join(DIST, 't', it._bigFile)); it.big = `/t/${it._bigFile}`; }
     }
   }
   // 검색엔진에 내보낼 가치가 낮은 페이지(권리·재고, 함정 물건, 목록 밖이면서 사진 없는 물건)는 검색 제외
@@ -1365,14 +1405,14 @@ async function main() {
       id: it.id, t: it.t, kind: G ? (it.cat === 'car' ? '차량 공매' : `${SUB_NAME[it.sub] || '동산'} 공매`) : `${CAT_NAME[it.cat] || '부동산'} 공매`,
       min: won(it.min), appr: it.appr ? won(it.appr) : '', rate: it.rate && it.rate < 100 && !it.trap ? it.rate : null,
       region: G ? '' : [SD_SHORT(it.sd), it.sgg].filter(Boolean).join(' '), end: it.en ? kdate(it.en) : '',
-      thumb: it._thumbFile ? path.join(CACHE, 'thumbs', it._thumbFile) : ''
+      thumb: (it._bigFile || it._thumbFile) ? path.join(CACHE, 'thumbs', it._bigFile || it._thumbFile) : ''
     };
   });
   await fs.writeFile(path.join(ROOT, '.cache', 'og-jobs.json'), JSON.stringify(ogJobs)).catch(async () => { await fs.mkdir(CACHE, { recursive: true }); await fs.writeFile(path.join(CACHE, 'og-jobs.json'), JSON.stringify(ogJobs)); });
   log(`공유 카드 대상 ${ogJobs.length}건`);
 
   const slim = listed.map((it) => {
-    const { pnu, evc, how, org, req, land, bld, url, prop, alc, key, addr, mod, stat, src, _thumbFile, _gallery, gallery, photos, spec, og, lowValue, ...rest } = it;
+    const { pnu, evc, how, org, req, land, bld, url, prop, alc, key, addr, mod, stat, src, _thumbFile, _bigFile, big, _gallery, gallery, photos, spec, og, lowValue, ...rest } = it;
     return { ...rest, risk: risksOf(it).filter(([h]) => h !== '시세 비교 없음' && !h.startsWith('명도')).length };
   });
   const gRes = results.filter((r) => (r.cat === 'goods' || r.cat === 'car') && r.t).slice(0, 20);
