@@ -677,7 +677,7 @@ function pickDetail(json) {
   const x = Array.isArray(it) ? it[0] : it;
   if (!x || typeof x !== 'object') return null;
   const t = (v, n = 1500) => { const s0 = String(v ?? '').replace(/\r\n?/g, '\n').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim(); return !s0 || /^[-.\s]*$/.test(s0) ? undefined : s0.length > n ? s0.slice(0, n) + '…' : s0; };
-  const apsl = (Array.isArray(x.apslEvlClgList) ? x.apslEvlClgList : []).filter((a) => a && (a.urlAdr || a.apslEvlOrgNm)).slice(0, 3)
+  const apsl = (Array.isArray(x.apslEvlClgList) ? x.apslEvlClgList : []).filter((a, i, arr) => a && (a.urlAdr || a.apslEvlOrgNm) && arr.findIndex((b) => b && (b.urlAdr || '') === (a.urlAdr || '') && b.apslEvlOrgNm === a.apslEvlOrgNm && b.apslEvlYmd === a.apslEvlYmd) === i).slice(0, 3)
     .map((a) => ({ org: t(a.apslEvlOrgNm, 60), ymd: t(a.apslEvlYmd, 10), amt: num(a.apslEvlAmt), url: /^https:\/\/www\.onbid\.co\.kr\//.test(a.urlAdr || '') ? a.urlAdr : undefined }));
   const d = {
     note: t(x.pytnMtrsCont), loc: t(x.locVntyPscdCont, 600), use: t(x.utlzPscdCont, 600), etc: t(x.cltrEtcCont, 1200),
@@ -1082,7 +1082,7 @@ function noticeSection(it) {
     ['유의사항', d.note, true], ['위치·주변', d.loc], ['이용 상태', d.use], [G ? '물건 설명' : '기타 사항', d.etc],
     ['매수 자격', d.qual], [G ? '보관·인도 장소' : '인도 장소', d.place], ['임대 조건', d.rent]
   ].filter(([, v]) => v);
-  const ap = (d.apsl || []).map((a) => `<li><span><b>${esc(a.org || '감정평가기관')}</b>${a.ymd ? ` · ${esc(a.ymd.replace(/(\d{4})(\d{2})(\d{2})/, '$1.$2.$3'))}` : ''}${a.amt ? ` · ${won(a.amt)}` : ''}</span>${a.url ? `<a class="btn-outline sm" href="${esc(a.url)}" target="_blank" rel="noopener">감정평가서 열기</a>` : ''}</li>`).join('');
+  const ap = (d.apsl || []).filter((a, i, arr) => arr.findIndex((b) => (b.url || '') === (a.url || '') && b.org === a.org && b.ymd === a.ymd) === i).map((a) => `<li><span><b>${esc(a.org || '감정평가기관')}</b>${a.ymd ? ` · ${esc(a.ymd.replace(/(\d{4})(\d{2})(\d{2})/, '$1.$2.$3'))}` : ''}${a.amt ? ` · ${won(a.amt)}` : ''}</span>${a.url ? `<a class="btn-outline sm" href="${esc(a.url)}" target="_blank" rel="noopener">감정평가서 열기</a>` : ''}</li>`).join('');
   if (!rows.length && !ap && !d.cond) return '';
   return `<section class="card-block notice-sec">
 <h2>온비드 공고에 적힌 내용</h2>
