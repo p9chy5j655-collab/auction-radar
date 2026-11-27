@@ -671,6 +671,22 @@ function photoUrlsIn(json, text) {
   else for (const m of String(text || '').matchAll(/<potoUrlList>[\s\S]*?<urlAdr>([^<]+)<\/urlAdr>/g)) out.push(m[1]);
   return out.map((u) => u.replace(/&amp;/g, '&').replace(/[?&]downloadImageKind=[A-Z_]+/, '')).filter((u) => /^https?:\/\//.test(u));
 }
+// 상세 API의 공고 내용 중 이용자에게 도움이 되는 것만 골라 둬요 (온비드 원문 그대로, 길면 잘라요)
+function pickDetail(json) {
+  const it = json?.response?.body?.items?.item ?? json?.body?.items?.item;
+  const x = Array.isArray(it) ? it[0] : it;
+  if (!x || typeof x !== 'object') return null;
+  const t = (v, n = 1500) => { const s0 = String(v ?? '').replace(/\r\n?/g, '\n').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim(); return !s0 || /^[-.\s]*$/.test(s0) ? undefined : s0.length > n ? s0.slice(0, n) + '…' : s0; };
+  const apsl = (Array.isArray(x.apslEvlClgList) ? x.apslEvlClgList : []).filter((a) => a && (a.urlAdr || a.apslEvlOrgNm)).slice(0, 3)
+    .map((a) => ({ org: t(a.apslEvlOrgNm, 60), ymd: t(a.apslEvlYmd, 10), amt: num(a.apslEvlAmt), url: /^https:\/\/www\.onbid\.co\.kr\//.test(a.urlAdr || '') ? a.urlAdr : undefined }));
+  const d = {
+    note: t(x.pytnMtrsCont), loc: t(x.locVntyPscdCont, 600), use: t(x.utlzPscdCont, 600), etc: t(x.cltrEtcCont, 1200),
+    qual: t(x.purrQlfcCont, 600), cond: t(x.icdlCdtnCont, 2500), place: t(x.dlvrPlcNm || x.cstdPlcNm || x.cltrCstdPlcNm, 120),
+    rent: t([x.rentMthodNm, x.rentPerdCont].filter((v) => v && v !== '-').join(' · '), 120), apsl: apsl.length ? apsl : undefined
+  };
+  for (const k of Object.keys(d)) if (d[k] === undefined) delete d[k];
+  return Object.keys(d).length ? d : null;
+}
 async function attachPhotos(list) {
   const dir = path.join(CACHE, 'detail');
   await fs.mkdir(dir, { recursive: true });
@@ -685,9 +701,13 @@ async function attachPhotos(list) {
   const dead = {};
   let calls = 0, found = 0, firstErr = '';
   const kindOf = (it) => (it.cat === 'goods' ? 'goods' : it.cat === 'car' ? 'car' : 're');
-  for (const it of list) {
-    const c = cache[it.id] && cache[it.id].v === 2 ? cache[it.id] : null;
-    if (c && (c.p.length || Date.now() - c.t < 7 * 864e5)) { if (c.p.length) it.photos = c.p; continue; }
+  // 사진은 한 번 찾으면 계속 쓰고, 공고 내용(유의사항·감정평가서)은 7일마다 다시 받아요.
+  // 아직 공고 내용이 없는 물건을 먼저 부르고, 오래된 것은 남은 호출로 새로 받아요.
+  const order = [...list].sort((a, b) => (cache[a.id] && cache[a.id].d ? 1 : 0) - (cache[b.id] && cache[b.id].d ? 1 : 0));
+  for (const it of order) {
+    const c = cache[it.id] && cache[it.id].v >= 2 ? cache[it.id] : null;
+    if (c) { if (c.p.length) it.photos = c.p; if (c.d) it.dtl = c.d; }
+    if (c && c.v === 3 && Date.now() - c.t < 7 * 864e5) continue;
     const k = kindOf(it);
     if (dead[k] || calls >= MAX || !DTL_URL[k] || (day.n[k] || 0) >= DAY_MAX) continue;
     const [mng, cdtn] = it.id.split('_');
@@ -695,8 +715,10 @@ async function attachPhotos(list) {
       calls++; day.n[k] = (day.n[k] || 0) + 1;
       const { json, text } = await callApi(DTL_URL[k], { cltrMngNo: it.key || mng, pbctCdtnNo: cdtn, resultType: 'json', pageNo: 1, numOfRows: 10 }, { tries: 1, raw: true });
       const urls = [...new Set(photoUrlsIn(json, text))].slice(0, k === 're' ? 3 : 4);
-      cache[it.id] = { v: 2, t: Date.now(), p: urls };
+      const d = pickDetail(json);
+      cache[it.id] = { v: 3, t: Date.now(), p: urls, d };
       if (urls.length) { it.photos = urls; found++; }
+      if (d) it.dtl = d;
     } catch (e) {
       if (!firstErr) firstErr = `${k}: ${e.message}`;
       if (/API 오류 4\d\d|SERVICE_KEY|SERVICE ACCESS|등록되지 않은|not found|\s(20|22|30|31|32|33)\s/i.test(e.message)) dead[k] = true;
@@ -932,6 +954,22 @@ export function risksOf(it) {
   if (/지분|토지만|건물만|제시외/.test(it.t)) r.push(['물건명에 주의 단어', '지분·토지만·건물만·제시외 같은 표현이 있어요. 공고문에서 범위를 확인하세요.']);
   if (it.rate != null && it.rate < 30) r.push(['가격이 비정상적으로 낮아요', `감정가의 ${it.rate}%예요. 이렇게 싼 물건은 낙찰자가 떠안는 임차인 보증금, 일부 지분만 파는 경우, 건물만 또는 토지만 파는 경우처럼 숨은 조건이 있는 경우가 많아요. 공고문 유의사항을 꼭 확인하세요.`]);
   if (it.min === null) r.push(['최저가 비공개', '최저 입찰가가 공개되지 않은 물건이에요.']);
+  // 온비드 공고의 유의사항·조건에 적힌 말로 찾은 신호 (공고 원문 기준)
+  if (it.dtl) {
+    const tx = [it.dtl.note, it.dtl.cond, it.dtl.etc, it.dtl.qual].filter(Boolean).join('\n');
+    const NOTE_RISK = [
+      [/대항력|선순위\s*(임차|전세)/, '공고: 대항력 있는 임차인 안내', '공고에 대항력 있는 임차인이 있을 수 있다는 안내가 있어요. 그렇다면 낙찰자가 임차인의 보증금을 떠안을 수 있어요. 전입세대 열람과 임대차 관계를 꼭 확인하세요.'],
+      [/유치권/, '공고: 유치권 언급', '공사대금 등을 이유로 물건을 점유하는 사람이 있을 수 있어요. 넘겨받기 어렵거나 돈을 따로 물어줘야 할 수 있어요.'],
+      [/법정지상권/, '공고: 법정지상권 언급', '토지와 건물 주인이 달라질 수 있는 물건이에요. 땅을 사도 마음대로 쓰지 못할 수 있어요.'],
+      [/관리비[^\n]{0,10}(체납|미납|연체)|(체납|미납|연체)[^\n]{0,10}관리비/, '공고: 밀린 관리비 안내', '밀린 관리비 중 일부(공용부분)는 낙찰자가 내야 할 수 있어요. 관리사무소에 금액을 먼저 확인하세요.'],
+      [/분묘/, '공고: 분묘(무덤) 언급', '땅에 무덤이 있으면 함부로 옮길 수 없어 쓸 수 있는 면적이 줄어요.'],
+      [/맹지|진입\s*도로[^\n]{0,6}없|도로에\s*접하지/, '공고: 도로 없는 땅(맹지) 가능성', '도로에 닿지 않은 땅은 건물을 짓기 어렵고 되팔기도 어려워요.'],
+      [/농지취득자격|농취증/, '공고: 농지취득자격증명 필요', '농지는 낙찰 뒤 정해진 기간 안에 농지취득자격증명을 내야 해요. 못 내면 보증금을 잃을 수 있어요.'],
+      [/토지거래\s*허가/, '공고: 토지거래허가 필요', '허가구역이라 허가를 받아야 살 수 있어요. 허가가 나지 않을 수 있으니 미리 확인하세요.'],
+      [/위반\s*건축물|불법\s*(건축|증축|용도)/, '공고: 위반 건축물 언급', '불법 증축 등으로 이행강제금이 나올 수 있어요. 건축물대장을 확인하세요.']
+    ];
+    for (const [re, h, d] of NOTE_RISK) if (re.test(tx)) r.push([h, d]);
+  }
   if ((it.cat === 'home') && !it.mkt) r.push(['시세 비교 없음', '주변 실거래 자료를 찾지 못했어요. 시세를 직접 확인하세요.']);
   return r;
 }
@@ -1034,6 +1072,26 @@ function goodsCards(it, kw, place) {
 }
 
 let ASSET_V = '';
+// 온비드 공고에 적힌 내용 (상세 API 원문). 지어낸 말 없이 원문을 그대로 보여줘요.
+function noticeSection(it) {
+  const d = it.dtl;
+  if (!d) return '';
+  const br = (s) => esc(s).replace(/\n/g, '<br>');
+  const G = it.cat === 'goods' || it.cat === 'car';
+  const rows = [
+    ['유의사항', d.note, true], ['위치·주변', d.loc], ['이용 상태', d.use], [G ? '물건 설명' : '기타 사항', d.etc],
+    ['매수 자격', d.qual], [G ? '보관·인도 장소' : '인도 장소', d.place], ['임대 조건', d.rent]
+  ].filter(([, v]) => v);
+  const ap = (d.apsl || []).map((a) => `<li><span><b>${esc(a.org || '감정평가기관')}</b>${a.ymd ? ` · ${esc(a.ymd.replace(/(\d{4})(\d{2})(\d{2})/, '$1.$2.$3'))}` : ''}${a.amt ? ` · ${won(a.amt)}` : ''}</span>${a.url ? `<a class="btn-outline sm" href="${esc(a.url)}" target="_blank" rel="noopener">감정평가서 열기</a>` : ''}</li>`).join('');
+  if (!rows.length && !ap && !d.cond) return '';
+  return `<section class="card-block notice-sec">
+<h2>온비드 공고에 적힌 내용</h2>
+<p class="muted small">온비드 공고 원문을 그대로 옮겼어요. 일부가 잘렸을 수 있고, 원문이 우선이에요.</p>
+${rows.map(([k, v, hl]) => `<div class="nt-row${hl ? ' hl' : ''}"><b>${esc(k)}</b><p>${br(v)}</p></div>`).join('')}
+${ap ? `<div class="nt-row"><b>감정평가서</b><ul class="apsl">${ap}</ul><p class="muted small">감정평가서에는 사진, 내부 구조, 평가 근거가 자세히 있어요. 온비드 파일이 바로 내려받아져요.</p></div>` : ''}
+${d.cond ? `<details class="nt-more"><summary>입찰 조건 전체 보기</summary><p>${br(d.cond)}</p></details>` : ''}
+</section>`;
+}
 function itemPage(it, trades, similar, demo, updatedAt) {
   const risks = risksOf(it);
   const G = it.cat === 'goods' || it.cat === 'car';
@@ -1184,6 +1242,7 @@ ${isCar ? '' : `<a class="btn-outline" href="https://search.shopping.naver.com/s
 <h2>위험 신호</h2>
 ${risks.length ? `<ul class="risks">${risks.map(([h, d]) => `<li><b>${esc(h)}</b><span>${esc(d)}</span></li>`).join('')}</ul>` : `<p class="ok-line">데이터상 눈에 띄는 위험 신호는 없어요. 그래도 ${G ? '공고문의 물건 상태·인도 조건은' : '공고문과 등기부는'} 꼭 확인하세요.</p>`}
 </section>
+${noticeSection(it)}
 
 ${G ? (() => {
   const gd = goodsGuide(it, kw);
@@ -1417,7 +1476,7 @@ async function main() {
   log(`공유 카드 대상 ${ogJobs.length}건`);
 
   const slim = listed.map((it) => {
-    const { pnu, evc, how, org, req, land, bld, url, prop, alc, key, addr, mod, stat, src, _thumbFile, _bigFile, big, _gallery, gallery, photos, spec, og, lowValue, ...rest } = it;
+    const { pnu, evc, how, org, req, land, bld, url, prop, alc, key, addr, mod, stat, src, _thumbFile, _bigFile, big, _gallery, gallery, photos, dtl, _coll, spec, og, lowValue, ...rest } = it;
     return { ...rest, risk: risksOf(it).filter(([h]) => h !== '시세 비교 없음' && !h.startsWith('명도')).length };
   });
   // 첫 화면 '최근 이렇게 팔렸어요': 사람들이 신기해할 종류(명품·금·차·전자)와 경쟁이 붙은 사례를 먼저
