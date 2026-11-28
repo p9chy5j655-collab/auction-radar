@@ -711,3 +711,13 @@ a.chip{display:inline-flex;align-items:center;text-decoration:none}
 @media (min-width:960px){.hero4 .wall{min-height:600px}.hero4 #circles:empty{min-height:168px}}
 .re-hero #hot:empty{min-height:34px}
 .re-hero ~ .pick:empty{min-height:436px}
+/* 디자인 정리 (11.28): 제목 대비, 배지 1개, 카드 크기 리듬 */
+.rot{color:var(--orange)}
+.kicker{font-size:12px;font-weight:700;color:var(--muted)}
+.rate-chip{background:none!important;color:var(--orange);padding:0;font-size:15px;font-weight:800}
+.badge-red{background:#FDECEC;color:var(--red)}
+.pick2.big .pick2-ph{height:200px}
+@media (min-width:1024px){.pick2.big .pick2-ph{flex:0 0 42%;height:260px}.pick2.big .pick2-body{justify-content:center;padding:24px 28px}}
+.rc-tag.over{color:var(--orange);background:#FFF1E8}
+.bar i{background:#8A93A3}
+a.cat2{text-decoration:none;color:inherit}
