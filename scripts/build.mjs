@@ -174,7 +174,13 @@ function carName(makerRaw, modelRaw, yearRaw, useRaw) {
   if (!md) return { name: `${kind || '차종'} (모델은 원문 확인)`, model: '', year: y || '', unknown: true };
   return { name: [mk, md, y ? `${y}년식` : ''].filter(Boolean).join(' '), model: [mk, md].filter(Boolean).join(' '), year: y || '', unknown: false };
 }
+// '라임오피스텔 오피스텔'처럼 같은 말이 겹치면 한 번만
 function friendlyTitle(r, cat, land, bld) {
+  const t = friendlyTitle0(r, cat, land, bld);
+  const w = String(t).split(' ');
+  return w.filter((x, i) => !(i > 0 && x.length >= 2 && (w[i - 1] === x || (w[i - 1].endsWith(x) && w[i - 1].length > x.length && /[가-힣]$/.test(x))))).join(' ');
+}
+function friendlyTitle0(r, cat, land, bld) {
   const orig = (r.onbidCltrNm || '').replace(/\s+/g, ' ').trim();
   if (cat === 'goods') {
     // 앞에 붙은 보관 장소 주소(예: '경기도 김포시 사우동 941 ')는 빼요
