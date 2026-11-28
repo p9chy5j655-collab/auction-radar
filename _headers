@@ -1,0 +1,6 @@
+# 예전 주소(*.pages.dev)는 검색엔진이 수집하지 않게 해요. 방문자는 페이지 안 스크립트가 gongmae24.com으로 옮겨요.
+https://:project.pages.dev/*
+  X-Robots-Tag: noindex
+
+https://:version.:project.pages.dev/*
+  X-Robots-Tag: noindex
