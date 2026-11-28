@@ -70,6 +70,17 @@ export async function buildCollections({ DIST, SITE, ASSET_V, items, results, up
   const half = items.filter((it) => !(it.cat === 'goods' || it.cat === 'car') && it.rate != null && it.rate <= 50 && it.rate >= 30);
   if (half.filter(ok).length >= 5) pages.push({ slug: 're-half', name: '반값 부동산', h1: '온비드 반값 부동산 공매', titleKw: '감정가 50% 이하 아파트·토지·상가', list: half, res: [], tip: '여러 번 유찰돼 값이 내려간 물건이에요. 싸진 데는 이유가 있을 수 있으니 유찰 횟수와 공고문 유의사항(임차인, 지분, 건물만·토지만 매각)을 먼저 보세요.', kind: 're', typeKey: 'half', appHref: '../realestate.html?tab=halfre' });
 
+  // 지역별 반값 부동산: '서울 반값 부동산 공매', '경기 반값 아파트 공매'처럼 실제로 찾는 말
+  for (const sd of SD_ORDER) {
+    const label = SD_LABEL[sd] || sd;
+    const hl = half.filter((it) => sdOf(it) === sd);
+    if (hl.filter(ok).length < 3) continue;
+    const apt = hl.filter((it) => RE_TYPES[0].test(it));
+    const aptN = apt.filter(ok).length;
+    pages.push({ slug: `${SD_SLUG[sd]}-half`, name: `${label} 반값 부동산`, h1: `${label} 반값 부동산 공매`, titleKw: `${aptN >= 1 ? '반값 아파트·' : ''}감정가 50% 이하 집·땅·상가`,
+      list: hl, res: [], tip: '여러 번 유찰돼 값이 내려간 물건이에요. 싸진 데는 이유가 있을 수 있으니 유찰 횟수와 공고문 유의사항(임차인, 지분, 건물만·토지만 매각)을 먼저 보세요.', kind: 're', sd, typeKey: 'half',
+      appHref: `../realestate.html?tab=halfre&q=${encodeURIComponent(label.replace('·', ' '))}` });
+  }
   const bySlug = new Map(pages.map((p) => [p.slug, p]));
   const median = (a) => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y); const m = s.length >> 1; return s.length % 2 ? s[m] : Math.round((s[m - 1] + s[m]) / 2); };
   const hoursLeft = (it) => (it.en ? (new Date(it.en).getTime() - now) / 3600e3 : 1e9);
@@ -138,8 +149,9 @@ ${SITE ? `<link rel="canonical" href="${esc(SITE)}/c/${esc(p.slug)}.html">` : ''
       + (soonN ? ` 48시간 안에 마감하는 물건은 ${soonN}건이에요.` : '');
     const desc = `${p.h1} 물건 ${n}건을 감정가 대비 싼 순서로 모았어요.${med != null ? ` 최저가는 감정가의 중간 ${med}% 수준.` : ''}${minIt ? ` 가장 낮은 최저가 ${won(minIt.min)}.` : ''} 매시간 업데이트되는 온비드 공매 정보.`;
     // 같은 지역 다른 종류, 같은 종류 다른 지역
-    const rel1 = p.sd ? RE_TYPES.filter((T) => T.key !== p.typeKey).map((T) => bySlug.get(`${SD_SLUG[p.sd]}-${T.key}`)).filter(Boolean) : [];
-    const rel2 = p.kind === 're' && RE_TYPES.some((T) => T.key === p.typeKey)
+    const rel1 = p.sd ? [...RE_TYPES.filter((T) => T.key !== p.typeKey).map((T) => bySlug.get(`${SD_SLUG[p.sd]}-${T.key}`)), p.typeKey !== 'half' ? bySlug.get(`${SD_SLUG[p.sd]}-half`) : null].filter(Boolean) : [];
+    const rel2 = p.typeKey === 'half' ? SD_ORDER.filter((sd) => sd !== p.sd).map((sd) => bySlug.get(`${SD_SLUG[sd]}-half`)).filter(Boolean)
+      : p.kind === 're' && RE_TYPES.some((T) => T.key === p.typeKey)
       ? SD_ORDER.filter((sd) => sd !== p.sd).map((sd) => bySlug.get(`${SD_SLUG[sd]}-${p.typeKey}`)).filter(Boolean).slice(0, 18)
       : pages.filter((q) => q.kind === p.kind && q.slug !== p.slug && !q.sd).slice(0, 12);
     const relHtml = (arr) => arr.map((q) => `<a class="chip" href="${esc(q.slug)}.html">${esc(q.name)}</a>`).join('');
@@ -169,7 +181,7 @@ ${rr.length >= 3 ? `<section class="card-block"><h2>최근 2주 실제 낙찰 �
 ${sggTop.length > 1 ? `<section class="card-block"><h2>${esc(SD_LABEL[p.sd] || p.sd)} 어디에 많을까</h2><div class="chips">${sggTop.map(([g, c]) => `<span class="chip chip-static">${esc(g)} ${c}건</span>`).join('')}</div></section>` : ''}
 <section class="card-block"><h2>${esc(p.name)} 공매, 이것부터 확인하세요</h2><p>${esc(p.tip)}</p><p class="muted small">처음이라면 <a href="../guide.html">공매 초보 가이드</a>에서 가입부터 낙찰 후까지 5단계를 먼저 보세요.</p></section>
 ${rel1.length ? `<section class="card-block"><h2>${esc(SD_LABEL[p.sd] || p.sd)}의 다른 공매</h2><div class="chips">${relHtml(rel1)}</div></section>` : ''}
-${rel2.length ? `<section class="card-block"><h2>${p.sd ? '다른 지역 ' + esc(RE_TYPES.find((T) => T.key === p.typeKey).name) : '다른 종류도 보기'}</h2><div class="chips">${relHtml(rel2)}</div></section>` : ''}
+${rel2.length ? `<section class="card-block"><h2>${p.typeKey === 'half' ? '다른 지역 반값 부동산' : p.sd ? '다른 지역 ' + esc(RE_TYPES.find((T) => T.key === p.typeKey).name) : '다른 종류도 보기'}</h2><div class="chips">${relHtml(rel2)}</div></section>` : ''}
 <script type="application/ld+json">${JSON.stringify(crumbs).replace(/</g, '\\u003c')}</script>
 ${foot}`;
     await fs.writeFile(path.join(dir, `${p.slug}.html`), html);
@@ -191,6 +203,7 @@ ${foot}`;
 <p>보고 싶은 종류를 누르면 지금 입찰 중인 물건을 감정가 대비 싼 순서로 보여드려요.</p>
 </header>
 ${gPages.length ? `<section class="card-block"><h2>동산·차량</h2><div class="chips">${gPages.map((p) => `<a class="chip" href="${esc(p.slug)}.html">${esc(p.name)} ${p.n}</a>`).join('')}</div></section>` : ''}
+${pages.some((p) => p.typeKey === 'half' && p.sd) ? `<section class="card-block"><h2>지역별 반값 부동산</h2><div class="chips">${pages.filter((p) => p.typeKey === 'half' && p.sd).map((p) => `<a class="chip" href="${esc(p.slug)}.html">${esc(p.name)} ${p.n}</a>`).join('')}</div></section>` : ''}
 ${special.length ? `<section class="card-block"><h2>전국 부동산</h2><div class="chips">${special.map((p) => `<a class="chip" href="${esc(p.slug)}.html">${esc(p.name)} ${p.n}</a>`).join('')}</div></section>` : ''}
 <section class="card-block"><h2>지역별 부동산</h2><p class="muted small">숫자는 진행 중인 물건 수예요. 누르면 그 지역 목록으로 가요.</p>
 <div class="coll-table-wrap"><table class="coll-table"><thead><tr><th>지역</th>${RE_TYPES.map((T) => `<th>${esc(T.name)}</th>`).join('')}</tr></thead><tbody>${table}</tbody></table></div></section>

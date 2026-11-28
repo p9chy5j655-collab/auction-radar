@@ -1099,7 +1099,9 @@ function itemPage(it, trades, similar, demo, updatedAt) {
   const kw = G ? keywordOf(it) : null;
   const place = G ? placeOf(it) : '';
   const region = [it.sd, it.sgg, it.emd].filter(Boolean).join(' ');
-  const title = it.min ? `${won(it.min)}부터 · ${it.t}${it.rate && it.rate < 100 ? ` (감정가의 ${it.rate}%)` : ''}` : `${it.t} (최저가 비공개)`;
+  // 검색어 순서: '현대 스타렉스 2007년식 공매 - 최저 100만원 (감정가의 70%)'
+  const kwT = /공매/.test(it.t) ? it.t : `${it.t} 공매`;
+  const title = it.min ? `${kwT} - 최저 ${won(it.min)}${it.rate && it.rate < 100 ? ` (감정가의 ${it.rate}%${it.rate <= 50 ? ', 반값' : ''})` : ''}` : `${kwT} (최저가 비공개)`;
   const desc = `${region} ${CAT_NAME[it.cat]} 공매 물건. 감정가 ${won(it.appr)}, 최저입찰가 ${won(it.min)}, 유찰 ${it.fails}회, 입찰 마감 ${kdate(it.en)}.`;
   const canonical = SITE ? `${SITE}/item/${it.id}.html` : '';
   const rows = [
