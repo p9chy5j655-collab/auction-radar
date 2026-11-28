@@ -1,6 +1,6 @@
 {
-  "name": "경매레이더",
-  "short_name": "경매레이더",
+  "name": "공매24",
+  "short_name": "공매24",
   "description": "반값 공매 물건, 마감 임박 물건, 시세보다 싼 아파트를 한눈에",
   "lang": "ko",
   "start_url": "./index.html",

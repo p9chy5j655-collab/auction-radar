@@ -63,10 +63,12 @@ export async function buildCollections({ DIST, SITE, ASSET_V, items, results, up
       appHref: `../index.html?cat=${T.key === 'bike' ? 'car' : T.key}` });
   }
   // 특별 모음
+  const cheapGoods = items.filter((it) => (it.cat === 'goods' || it.cat === 'car') && !['right', 'stock'].includes(it.sub) && it.min && it.min <= 1e6);
+  if (cheapGoods.filter(ok).length >= 5) pages.push({ slug: 'goods-under-1m', name: '100만원 이하 물건', h1: '100만원 이하 공매 물건', titleKw: '금·전자기기·생활용품 소액 공매', list: cheapGoods, res: [], tip: '소액 물건은 공매를 처음 연습하기 좋아요. 다만 운반비·택배비가 물건값보다 클 수 있으니 보관 장소부터 확인하고, 입찰보증금(보통 10%)도 미리 준비하세요.', kind: 'goods', typeKey: 'cheap', appHref: '../index.html' });
   const cheapHome = items.filter((it) => it.cat === 'home' && it.min && it.min <= 1e8);
-  if (cheapHome.filter(ok).length >= 5) pages.push({ slug: 'home-under-100m', name: '1억 이하 집', h1: '최저가 1억 이하 아파트·주택 공매', list: cheapHome, res: [], tip: RE_TYPES[1].tip, kind: 're', typeKey: 'cheap', appHref: '../realestate.html?tab=under1' });
+  if (cheapHome.filter(ok).length >= 5) pages.push({ slug: 'home-under-100m', name: '1억 이하 집', h1: '1억 이하 아파트·주택 공매', titleKw: '소액 내 집 마련 온비드 물건', list: cheapHome, res: [], tip: RE_TYPES[1].tip, kind: 're', typeKey: 'cheap', appHref: '../realestate.html?tab=under1' });
   const half = items.filter((it) => !(it.cat === 'goods' || it.cat === 'car') && it.rate != null && it.rate <= 50 && it.rate >= 30);
-  if (half.filter(ok).length >= 5) pages.push({ slug: 're-half', name: '반값 이하 부동산', h1: '감정가 반값 이하로 내려온 부동산 공매', list: half, res: [], tip: '여러 번 유찰돼 값이 내려간 물건이에요. 싸진 데는 이유가 있을 수 있으니 유찰 횟수와 공고문 유의사항(임차인, 지분, 건물만·토지만 매각)을 먼저 보세요.', kind: 're', typeKey: 'half', appHref: '../realestate.html?tab=halfre' });
+  if (half.filter(ok).length >= 5) pages.push({ slug: 're-half', name: '반값 부동산', h1: '온비드 반값 부동산 공매', titleKw: '감정가 50% 이하 아파트·토지·상가', list: half, res: [], tip: '여러 번 유찰돼 값이 내려간 물건이에요. 싸진 데는 이유가 있을 수 있으니 유찰 횟수와 공고문 유의사항(임차인, 지분, 건물만·토지만 매각)을 먼저 보세요.', kind: 're', typeKey: 'half', appHref: '../realestate.html?tab=halfre' });
 
   const bySlug = new Map(pages.map((p) => [p.slug, p]));
   const median = (a) => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y); const m = s.length >> 1; return s.length % 2 ? s[m] : Math.round((s[m - 1] + s[m]) / 2); };
@@ -78,7 +80,7 @@ export async function buildCollections({ DIST, SITE, ASSET_V, items, results, up
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>${esc(p.title)} | 경매레이더</title>
+<title>${esc(p.title)} | 공매24</title>
 <meta name="description" content="${esc(desc)}">
 ${SITE ? `<link rel="canonical" href="${esc(SITE)}/c/${esc(p.slug)}.html">` : ''}
 <meta property="og:title" content="${esc(p.title)}">
@@ -87,6 +89,7 @@ ${SITE ? `<link rel="canonical" href="${esc(SITE)}/c/${esc(p.slug)}.html">` : ''
 <meta name="theme-color" content="#F3EFE7">
 <link rel="manifest" href="../manifest.webmanifest">
 <link rel="icon" href="../icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
 <link rel="stylesheet" href="../style.css?v=${ASSET_V}">
 </head>
@@ -125,7 +128,9 @@ ${SITE ? `<link rel="canonical" href="${esc(SITE)}/c/${esc(p.slug)}.html">` : ''
     const shown = sorted.slice(0, 60);
     const rr = p.res.filter((r) => r.rate >= 20 && r.rate <= 300);
     const rMed = median(rr.map((r) => r.rate));
-    p.title = `${p.h1} 물건 ${n.toLocaleString('ko-KR')}건 (${kdate(updatedAt).split(' ')[0]} 기준)`;
+    // 제목은 실제 검색어 순서로: '서울 아파트 공매 18건 - 온비드 반값·마감 임박 정리'
+    const kw = p.titleKw || (p.kind === 'goods' ? '온비드 감정가·실제 낙찰가 비교' : '온비드 반값·마감 임박 물건 정리');
+    p.title = `${p.h1} ${n.toLocaleString('ko-KR')}건 - ${kw}`;
     p.bar = p.name;
     const lede = `지금 온비드에서 입찰 중이거나 곧 시작하는 ${p.name} 공매 물건이 ${n.toLocaleString('ko-KR')}건 있어요.`
       + (med != null ? ` 최저 입찰가는 감정가의 중간값 ${med}% 수준이에요.` : '')
@@ -143,7 +148,7 @@ ${SITE ? `<link rel="canonical" href="${esc(SITE)}/c/${esc(p.slug)}.html">` : ''
     if (p.sd) for (const it of live) if (it.sgg) sggCount[it.sgg] = (sggCount[it.sgg] || 0) + 1;
     const sggTop = Object.entries(sggCount).sort((a, b) => b[1] - a[1]).slice(0, 12);
     const crumbs = { '@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: [
-      { '@type': 'ListItem', position: 1, name: '경매레이더', item: SITE ? `${SITE}/` : undefined },
+      { '@type': 'ListItem', position: 1, name: '공매24', item: SITE ? `${SITE}/` : undefined },
       { '@type': 'ListItem', position: 2, name: '모아보기', item: SITE ? `${SITE}/c/index.html` : undefined },
       { '@type': 'ListItem', position: 3, name: p.h1 }] };
     const html = `${head(p, desc)}
@@ -173,10 +178,11 @@ ${foot}`;
   }
 
   // 모아보기 첫 페이지
-  const gPages = pages.filter((p) => p.kind === 'goods');
+  const gPages = pages.filter((p) => p.kind === 'goods').sort((a, b) => (b.slug === 'goods-under-1m') - (a.slug === 'goods-under-1m'));
   const special = pages.filter((p) => p.slug.startsWith('all-') || ['home-under-100m', 're-half'].includes(p.slug));
+  // 동산 묶음에 소액 모음도 함께 보여요
   const table = SD_ORDER.filter((sd) => RE_TYPES.some((T) => bySlug.has(`${SD_SLUG[sd]}-${T.key}`))).map((sd) => `<tr><th>${esc(SD_LABEL[sd] || sd)}</th>${RE_TYPES.map((T) => { const q = bySlug.get(`${SD_SLUG[sd]}-${T.key}`); return `<td>${q ? `<a href="${esc(q.slug)}.html">${q.n}</a>` : '-'}</td>`; }).join('')}</tr>`).join('');
-  const hub = { slug: 'index', title: '지역·종류별 공매 물건 모아보기', bar: '모아보기' };
+  const hub = { slug: 'index', title: '온비드 공매 물건 지역·종류별 모아보기 (아파트·토지·상가·중고차·금)', bar: '모아보기' };
   const hubDesc = `온비드 공매 물건을 지역(서울·경기·부산 등)과 종류(아파트·토지·상가·중고차·금·명품)별로 모았어요. 매시간 업데이트.`;
   await fs.writeFile(path.join(dir, 'index.html'), `${head(hub, hubDesc)}
 <header class="coll-hero">

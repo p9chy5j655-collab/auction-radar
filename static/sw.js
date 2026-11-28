@@ -1,5 +1,5 @@
-// 경매레이더 서비스워커: 화면은 빠르게, 데이터는 항상 최신으로
-const CACHE = 'ar-v2';
+// 공매24 서비스워커: 화면은 빠르게, 데이터는 항상 최신으로
+const CACHE = 'ar-v3';
 const SHELL = ['./', './index.html', './guide.html', './icon.svg', './manifest.webmanifest'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', (e) => {

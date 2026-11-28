@@ -312,8 +312,10 @@
   // 사진이 없거나 못 불러오면 종류별 일러스트가 보여요
   function cover(it, cls) {
     var a = artKey(it);
+    // 첫 화면 큰 카드(오늘의 픽)는 바로 받아서 첫 화면 표시를 앞당겨요
+    var ld = /pick2/.test(cls) ? 'eager" fetchpriority="high' : 'lazy';
     return '<div class="' + cls + ' cv art" style="background:' + TINT[a] + '">' + ART[a] +
-      (it.thumb ? (/pick2|deal|ph/.test(cls) ? '<img class="bgimg" src="' + esc(it.thumb) + '" alt="" aria-hidden="true" loading="lazy">' : '') + '<img class="fgimg" src="' + esc(it.thumb) + '" alt="" loading="lazy" onerror="this.parentNode.querySelectorAll(\'img\').forEach(function(x){x.remove()})">' : '') + '</div>';
+      (it.thumb ? (/pick2|deal|ph/.test(cls) ? '<img class="bgimg" src="' + esc(it.thumb) + '" alt="" aria-hidden="true" loading="' + ld + '">' : '') + '<img class="fgimg" src="' + esc(it.thumb) + '" alt="" loading="' + ld + '" onerror="this.parentNode.querySelectorAll(\'img\').forEach(function(x){x.remove()})">' : '') + '</div>';
   }
   function coverOld(it, cls) {
     var k = iconKey(it);
@@ -834,7 +836,7 @@
     if (b.id === 'quizNext') { quiz.i++; renderQuiz(); return; }
     if (b.id === 'quizShare') {
       var sc2 = store.get('ar_quiz', { right: 0, total: 0, streak: 0 });
-      var txt = (sc2.total ? '나는 경매레이더 \'얼마에 팔렸을까?\'에서 ' + sc2.total + '문제 중 ' + sc2.right + '개 맞혔어. ' : '') +
+      var txt = (sc2.total ? '나는 공매24 \'얼마에 팔렸을까?\'에서 ' + sc2.total + '문제 중 ' + sc2.right + '개 맞혔어. ' : '') +
         '이거 실제 공매에서 얼마에 팔렸게?\n' + quiz.r.t + ' · 감정가 ' + won(quiz.r.appr) + '원';
       var u = location.origin + location.pathname;
       if (navigator.share) navigator.share({ title: '얼마에 팔렸을까?', text: txt, url: u }).catch(function () {});

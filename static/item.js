@@ -61,7 +61,7 @@
   $('like2').addEventListener('click', toggleLike);
   paintLike();
   $('share').addEventListener('click', function () {
-    var title = document.title.replace(' | 경매레이더', '');
+    var title = document.title.replace(' | 공매24', '');
     if (navigator.share) { navigator.share({ title: title, url: location.href }).catch(function () {}); return; }
     if (navigator.clipboard) navigator.clipboard.writeText(title + '\n' + location.href).then(function () { toast('링크를 복사했어요. 카톡에 붙여넣어 보세요.'); });
   });
@@ -290,7 +290,7 @@
   function utcStamp(d) { return d.getUTCFullYear() + pad(d.getUTCMonth() + 1) + pad(d.getUTCDate()) + 'T' + pad(d.getUTCHours()) + pad(d.getUTCMinutes()) + '00Z'; }
   function calInfo() {
     var end = new Date(it.en), start = new Date(end.getTime() - 3600e3);
-    return { title: '[입찰 마감] ' + it.t, start: start, end: end, desc: '경매레이더에서 저장한 일정이에요. 입찰 전 온비드 원문을 꼭 확인하세요.\n' + location.href };
+    return { title: '[입찰 마감] ' + it.t, start: start, end: end, desc: '공매24에서 저장한 일정이에요. 입찰 전 온비드 원문을 꼭 확인하세요.\n' + location.href };
   }
   $('checks').addEventListener('click', function (e) {
     var b = e.target.closest('[data-c]');

@@ -704,3 +704,10 @@ a.chip{display:inline-flex;align-items:center;text-decoration:none}
 .nt-more{border-top:1px solid var(--line);padding-top:12px}
 .nt-more summary{cursor:pointer;font-weight:700;font-size:14px;color:var(--accent);min-height:32px;display:flex;align-items:center}
 .nt-more p{font-size:13px;line-height:1.7;color:#3A3F4A;margin:8px 0 0;overflow-wrap:anywhere}
+/* 화면 밀림(CLS) 방지: 데이터가 오기 전에 첫 화면 자리를 미리 잡아 둬요 */
+.hero4 .wall{min-height:390px}
+.hero4 .facts{min-height:65px}
+.hero4 #circles:empty{min-height:38px}
+@media (min-width:960px){.hero4 .wall{min-height:600px}.hero4 #circles:empty{min-height:168px}}
+.re-hero #hot:empty{min-height:34px}
+.re-hero ~ .pick:empty{min-height:436px}

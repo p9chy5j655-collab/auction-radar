@@ -101,7 +101,7 @@ def draw_card(job, path):
     # 상단: 로고·종류
     d.rounded_rectangle((x, 56, x + 40, 96), 10, fill=INK)
     d.ellipse((x + 9, 65, x + 31, 87), outline=(255, 185, 138), width=3)
-    d.text((x + 54, 76), '경매레이더', font=font(BOLD, 30), fill=INK, anchor='lm')
+    d.text((x + 54, 76), '공매24', font=font(BOLD, 30), fill=INK, anchor='lm')
     kind = job.get('kind') or '공매'
     kf = font(BOLD, 24)
     kw = d.textlength(kind, font=kf)

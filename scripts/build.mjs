@@ -1,4 +1,4 @@
-// 경매레이더 빌드 스크립트
+// 공매24 빌드 스크립트
 // 온비드·실거래가 공공데이터를 받아 정적 사이트(dist/)를 만듭니다.
 // 인증키(DATA_GO_KR_KEY)가 없으면 예시 데이터로 만듭니다.
 import fs from 'node:fs/promises';
@@ -881,7 +881,7 @@ function reportPage(items, results, demo, updatedAt) {
   const line = (it, i) => `${i + 1}. ${it.t} — 최저 ${won(it.min)} (감정가의 ${it.rate}%, 유찰 ${it.fails}회, 마감 ${kdate(it.en)})`;
   const block = (title, list, extra) => list.length ? `<section class="card-block"><h2>${esc(title)}</h2><ol class="rank-list">${list.map((it) => `<li><a href="item/${esc(it.id)}.html"><b>${esc(it.t)}</b><span>${esc([it.sd, it.sgg].filter(Boolean).join(' '))} · 유찰 ${it.fails}회 · 마감 ${esc(kdate(it.en))}</span><span class="rl-price">최저 ${won(it.min)} <em>${extra(it)}</em></span></a></li>`).join('')}</ol></section>` : '';
   const text = [
-    `[경매레이더] ${week} 반값 공매 리포트`,
+    `[공매24] ${week} 반값 공매 리포트`,
     ...(odd.length ? ['', '■ 이번 주 가장 신기한 공매 물건', ...odd.map(line)] : []),
     '', '■ 감정가 대비 가장 싼 부동산 TOP 5', ...half.map(line),
     ...(cheap.length ? ['', '■ 주변 시세보다 싼 아파트·주택', ...cheap.map((it, i) => `${line(it, i)} · 시세의 ${it.mkt.ratio}%`)] : []),
@@ -893,7 +893,7 @@ function reportPage(items, results, demo, updatedAt) {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>${esc(week)} 반값 공매 리포트 | 경매레이더</title>
+<title>${esc(week)} 반값 공매 리포트 | 공매24</title>
 <meta name="description" content="${esc(`${week} 온비드 공매 중 감정가 대비 가장 싼 부동산 TOP 5, 시세보다 싼 아파트, 이색 공매 물건을 정리했어요.`)}">
 ${SITE ? `<link rel="canonical" href="${esc(SITE)}/report.html">` : ''}
 <meta property="og:title" content="${esc(week)} 반값 공매 리포트">
@@ -1115,7 +1115,7 @@ function itemPage(it, trades, similar, demo, updatedAt) {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>${esc(title)} | 경매레이더</title>
+<title>${esc(title)} | 공매24</title>
 <meta name="description" content="${esc(desc)}">
 ${canonical ? `<link rel="canonical" href="${esc(canonical)}">` : ''}
 ${it.lowValue ? '<meta name="robots" content="noindex,follow">' : ''}
@@ -1128,6 +1128,7 @@ ${it.og ? '<meta property="og:image:width" content="1200"><meta property="og:ima
 <link rel="manifest" href="../manifest.webmanifest">
 <link rel="icon" href="../icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="../icon-192.png">
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
 <link rel="stylesheet" href="../style.css?v=${ASSET_V}">
 </head>
@@ -1234,7 +1235,7 @@ ${isCar ? '' : `<a class="btn-outline" href="https://search.shopping.naver.com/s
 <a class="btn-outline" id="codeNew" href="#" target="_blank" rel="noopener">새 제품 가격 보기</a>
 </div>
 <div class="link-row"><a class="btn-outline" href="${esc(it.url)}" target="_blank" rel="noopener">온비드 원문에서 제품번호 확인</a></div>`}
-<p class="note">외부 사이트로 이동해요. 경매레이더는 중고거래 사이트의 정보를 수집하지 않아요.</p>
+<p class="note">외부 사이트로 이동해요. 공매24는 중고거래 사이트의 정보를 수집하지 않아요.</p>
 </section>`;
 })() : ''}
 
@@ -1541,6 +1542,16 @@ async function main() {
       : items.filter((s) => same(s) && s.sd === it.sd && s.sgg === it.sgg).slice(0, 4);
     if (!Gx && similar.length < 2) similar.push(...items.filter((s) => same(s) && s.sd === it.sd && !similar.includes(s)).slice(0, 4 - similar.length));
     await fs.writeFile(path.join(DIST, 'item', `${it.id}.html`), itemPage(it, tradeDetail[it.id] || [], similar, demo, updatedAt));
+  }
+  // 예전 주소(*.pages.dev)로 들어오면 대표 주소로 옮겨요 (검색 평가를 한 도메인으로 모으기)
+  if (SITE && !/\.pages\.dev$/.test(new URL(SITE).hostname)) {
+    const tag = `<script>if(/\\.pages\\.dev$/.test(location.hostname))location.replace(${JSON.stringify(SITE)}+location.pathname+location.search+location.hash)</script>`;
+    const walkHtml = async (d) => { for (const e of await fs.readdir(d, { withFileTypes: true })) {
+      const f = path.join(d, e.name);
+      if (e.isDirectory()) await walkHtml(f);
+      else if (e.name.endsWith('.html') && !/^google|^naver/.test(e.name)) { const h = await fs.readFile(f, 'utf8'); if (!h.includes('pages\\.dev$')) await fs.writeFile(f, h.replace(/<head>/i, '<head>\n' + tag)); }
+    } };
+    await walkHtml(DIST);
   }
   // Cloudflare Pages는 한 사이트에 파일 2만 개까지라 미리 확인해요 (공유 카드는 다음 단계에서 더해져요)
   { let n = 0; const walk = async (d) => { for (const e of await fs.readdir(d, { withFileTypes: true })) { if (e.isDirectory()) await walk(path.join(d, e.name)); else n++; } };
